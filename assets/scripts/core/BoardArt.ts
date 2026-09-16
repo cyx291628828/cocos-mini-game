@@ -8,6 +8,7 @@ export interface ArtBoard {
     bg: string
     w: number
     h: number
+    icons: { coin: string; dice: string }
     tiles: ArtTile[]
     texts: SkinText[]
     dice: ArtRect
@@ -18,9 +19,10 @@ const SLOT = (n: number): string => `textures/board/slots/slot_${n}/spriteFrame`
 
 export const ART_BOARDS: Record<number, ArtBoard> = {
     1: {
-        bg: 'textures/board/bg-clean/spriteFrame',
+        bg: 'textures/board/bg-empty/spriteFrame',
         w: 864,
         h: 1536,
+        icons: { coin: 'textures/icons/icon-coin/spriteFrame', dice: 'textures/icons/icon-dice/spriteFrame' },
         tiles: [
             { x: 122, y: 392, w: 110, h: 70, sprite: SLOT(1) },
             { x: 220, y: 396, w: 80, h: 54, sprite: SLOT(2) },

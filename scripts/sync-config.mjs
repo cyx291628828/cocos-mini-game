@@ -35,4 +35,11 @@ for (const f of await readdir(join(SRC_ASSETS, 'slots'))) {
   await cp(join(SRC_ASSETS, 'slots', f), join(DST_BOARD, 'slots', f))
   n++
 }
+const DST_ICONS = join(root, 'assets/resources/textures/icons')
+await mkdir(DST_ICONS, { recursive: true })
+for (const f of await readdir(join(SRC_ASSETS, 'icons'))) {
+  if (!f.endsWith('.png')) continue
+  await cp(join(SRC_ASSETS, 'icons', f), join(DST_ICONS, f))
+  n++
+}
 console.log(`[sync] 配置 3 份 + 资产 ${n} 个 已同步进 Cocos 工程`)

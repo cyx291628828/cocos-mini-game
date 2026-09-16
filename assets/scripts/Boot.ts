@@ -1,5 +1,5 @@
 /* 入口：场景启动后装配全部界面（代码优先，无需在编辑器挂组件） */
-import { director, Director, view, ResolutionPolicy, Node } from 'cc'
+import { director, Director, view, ResolutionPolicy, Node, debug } from 'cc'
 import { loadConfig } from './core/Config'
 import { loadSave, persist, resetSave } from './core/Save'
 import * as meta from './core/Meta'
@@ -16,9 +16,13 @@ let currentGame: { debugWin: () => void } | null = null
 director.once(Director.EVENT_AFTER_SCENE_LAUNCH, () => { void main() })
 
 async function main(): Promise<void> {
+    debug.setDisplayStats(false) // 关闭性能统计浮层（左下角数字）
     view.setDesignResolutionSize(720, 1280, ResolutionPolicy.FIXED_HEIGHT)
     canvas = director.getScene().getChildByName('Canvas') ?? new Node('Canvas')
     if (canvas.parent === null) director.getScene().addChild(canvas)
+    // 关闭预览调试面板（PROFILER_NODE）
+    const profiler = director.getScene().getChildByName('PROFILER_NODE')
+    if (profiler) profiler.active = false
 
     const cfg = await loadConfig()
     const save = loadSave()

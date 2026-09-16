@@ -1,8 +1,9 @@
 /* 换肤棋盘视图：背景板 + 格子贴片 + 棋子 + 图内数值位/热区（按玩法数据驱动） */
-import { Node, Color, Sprite, UITransform, Vec3, tween, Label } from 'cc'
+import { Node, Color, Sprite, UITransform, Vec3, tween, Label, Prefab, instantiate, resources } from 'cc'
 import * as meta from '../core/Meta'
 import type { TrackNode } from '../core/Config'
 import { ART_BOARDS, type ArtBoard } from '../core/BoardArt'
+import { HudBox } from './HudBox'
 import { node, roundRect, label, loadSF, sprite, sleep, clearG } from './UiKit'
 
 export const GAME_EMOJI: Record<string, string> = { '数独': '🔢', '扫雷': '💣', '数方': '🟩', '星之战': '⭐', '杀手数独': '🎯' }
@@ -21,6 +22,7 @@ export interface BoardDeps {
 let layer: Node | null = null
 let token: Node | null = null
 let valueEls: { bind: string; lbl: Label }[] = []
+let hudBoxes: { bind: string; box: HudBox }[] = []
 
 function tileIcon(nd: TrackNode): string {
     if (nd.type === '玩法格' && nd.game) return GAME_EMOJI[nd.game] ?? '🎮'
@@ -33,6 +35,10 @@ export async function build(parent: Node, deps: BoardDeps): Promise<void> {
 
     // 背景板
     await sprite(layer, art.bg, 720, 1280)
+
+    // 底部装饰带（覆盖自动修补痕迹，同时作为按钮区的视觉底座）
+    const footer = node('footer', layer, 0, cy(1454), 720, 200)
+    roundRect(footer, 720, 210, new Color(64, 38, 14, 215), 0)
 
     // 轨道贴点（贴片 + 类型图标 + 状态圈）
     const tileLayer = node('tiles', layer)
@@ -62,22 +68,77 @@ export async function build(parent: Node, deps: BoardDeps): Promise<void> {
     face.node.setPosition(0, 0)
     positionToken(false)
 
-    // 数值位（补丁 + 动态文本）
+    // 数值面板：金币框 = 编辑器 CoinBox 预制体（混合模式）；骰子/碎片 = 代码绘制（Session 2 再预制体化）
     valueEls = []
+    hudBoxes = []
+    const coinText = art.texts.find(t => t.bind === 'coins')
+    if (coinText) {
+        parent.getChildByName('CoinBox')?.destroy()
+        let coinNode: Node | null = null
+        try {
+            const pref = await new Promise<Prefab | null>(res => resources.load('prefabs/CoinBox', Prefab, (e, p) => res(e || !p ? null : p)))
+            if (pref) coinNode = instantiate(pref)
+        } catch { /* 预制体缺失走兜底 */ }
+        if (coinNode) {
+            parent.addChild(coinNode)
+            coinNode.setPosition(cx(coinText.rect.x + coinText.rect.w / 2), cy(coinText.rect.y + coinText.rect.h / 2), 0)
+            const hb = coinNode.getComponentInChildren(HudBox)
+            if (hb) {
+                // 自愈：预制体未拖 Value Label 时自动补
+                if (!hb.valueLabel) hb.valueLabel = coinNode.getComponentInChildren(Label)
+                hudBoxes.push({ bind: 'coins', box: hb })
+            }
+        }
+    }
     for (const t of art.texts) {
-        const p = node('val_' + t.bind, layer, cx(t.rect.x + t.rect.w / 2), cy(t.rect.y + t.rect.h / 2), t.rect.w * S, t.rect.h * S)
-        roundRect(p, t.rect.w * S, t.rect.h * S, new Color().fromHEX(t.patch), 12 * S)
-        const l = label(p, '', Math.round(t.rect.h * S * 0.62))
+        if (t.bind === 'coins') continue
+        const w = t.rect.w * S, h = t.rect.h * S
+        const p = node('val_' + t.bind, layer, cx(t.rect.x + t.rect.w / 2), cy(t.rect.y + t.rect.h / 2), w, h)
+        roundRect(p, w, h, new Color().fromHEX(t.patch), 16 * S)
+        roundRect(p, w, h, new Color(255, 235, 200, 150), 16 * S, false, 2.5 * S)
+        if (t.bind === 'dice') {
+            const ic = await sprite(p, art.icons.dice, 34 * S, 34 * S)
+            ic.setPosition(-w / 2 + 22 * S, 0)
+        }
+        const l = label(p, '', Math.round(h * S * 0.55))
+        l.node.setPosition(t.prefix ? 6 * S : w * 0.1, 0)
         valueEls.push({ bind: t.bind, lbl: l })
     }
 
-    // 骰子按钮热区（图上的投掷基座）
-    const diceHot = node('diceHot', layer, cx(art.dice.x + art.dice.w / 2), cy(art.dice.y + art.dice.h / 2), art.dice.w * S, art.dice.h * S)
-    diceHot.on(Node.EventType.TOUCH_END, () => deps.onDice())
+    // 章节信息条（左下，不透明——盖住背景板修补痕迹）
+    const chip = node('chapterChip', layer, cx(160), cy(1445), 250 * S, 92 * S)
+    roundRect(chip, 250 * S, 92 * S, new Color(60, 35, 10, 255), 20 * S)
+    label(chip, meta.chapterName(), Math.round(32 * S)).node.setPosition(0, 0)
 
-    // 功能热区
+    // 骰子按钮（图上裁切的基座贴片 = 真实按钮）
+    const diceHot = node('diceHot', layer, cx(art.dice.x + art.dice.w / 2), cy(art.dice.y + art.dice.h / 2), art.dice.w * S, art.dice.h * S)
+    try {
+        const diceSp = diceHot.addComponent(Sprite)
+        diceSp.sizeMode = Sprite.SizeMode.CUSTOM
+        diceSp.spriteFrame = await loadSF('textures/board/btn-dice/spriteFrame')
+    } catch (e) { console.warn('骰子贴片加载失败', e) }
+    diceHot.on(Node.EventType.TOUCH_START, () => { diceHot.setScale(0.94, 0.94, 1) })
+    diceHot.on(Node.EventType.TOUCH_END, () => { diceHot.setScale(1, 1, 1); deps.onDice() })
+    diceHot.on(Node.EventType.TOUCH_CANCEL, () => diceHot.setScale(1, 1, 1))
+
+    // 功能按钮（图上按钮位，真控件：面板 + 图标 + 文字）
+    const HOT_UI: Record<string, { icon: string; text: string }> = {
+        free: { icon: '🛠', text: '练习' },
+        gallery: { icon: '🖼', text: '拼图馆' },
+        settings: { icon: '⚙', text: '设置' },
+    }
     for (const h of art.hotspots) {
-        const b = node('hot_' + h.action, layer, cx(h.rect.x + h.rect.w / 2), cy(h.rect.y + h.rect.h / 2), h.rect.w * S, h.rect.h * S)
+        const w = h.rect.w * S, h2 = h.rect.h * S
+        const b = node('hot_' + h.action + h.rect.y, layer, cx(h.rect.x + h.rect.w / 2), cy(h.rect.y + h.rect.h / 2), w, h2)
+        roundRect(b, w, h2, new Color(60, 35, 10, 165), 16 * S)
+        const ui = HOT_UI[h.action]
+        const small = h.rect.y < 150
+        const ic = label(b, ui.icon, Math.round((small ? h2 * 0.6 : h2 * 0.42)))
+        ic.node.setPosition(0, small ? 0 : h2 * 0.14)
+        if (!small) {
+            const tx = label(b, ui.text, Math.round(h2 * 0.2), new Color(255, 247, 236))
+            tx.node.setPosition(0, -h2 * 0.28)
+        }
         b.on(Node.EventType.TOUCH_END, () => deps.onHotspot(h.action))
     }
 
@@ -116,14 +177,14 @@ export function refreshStates(): void {
 
 export function syncValues(): void {
     const save = meta.getSave()
-    for (const v of valueEls) {
-        if (v.bind === 'coins') v.lbl.string = String(save.coins)
-        else if (v.bind === 'dice') v.lbl.string = String(save.dice)
-        else if (v.bind === 'pieces') {
-            const g = meta.gateFor()
-            v.lbl.string = save.finished ? '' : `🧩 ${meta.piecesOf(g.picId).length}/${g.need}`
-        }
+    const textOf = (bind: string): string => {
+        if (bind === 'coins') return String(save.coins)
+        if (bind === 'dice') return String(save.dice)
+        if (bind === 'pieces') return save.finished ? '' : `🧩 ${meta.piecesOf(meta.gateFor().picId).length}/${meta.gateFor().need}`
+        return ''
     }
+    for (const v of valueEls) v.lbl.string = textOf(v.bind)
+    for (const h of hudBoxes) h.box.sync(textOf(h.bind))
 }
 
 function tileNode(idx: number): Node | null {
