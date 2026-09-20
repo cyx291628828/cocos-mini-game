@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>谜题星旅 · UI 交互原型</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=ZCOOL+KuaiLe&display=swap');
+
+/* ============================================================
+   谜题星旅 · 糖果卡通风 UI 交互原型
+   参考风格：3D 卡通 Q 版软萌（厚描边 / 立体挤出 / 糖果色）
+   ============================================================ */
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+html,body { height:100%; }
+
+body {
+  font-family:'ZCOOL KuaiLe','Baloo 2','PingFang SC','Microsoft YaHei',sans-serif;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, #2b3a5c 0%, transparent 60%),
+    radial-gradient(1000px 500px at 90% 110%, #3a2b5c 0%, transparent 60%),
+    linear-gradient(160deg,#171c2b 0%,#10141f 100%);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; overflow:hidden; color:#5b4030;
+}
+
+body::before { /* 桌面背景星点 */
+  content:''; position:fixed; inset:0; pointer-events:none;
+  background-image:
+    radial-gradient(2px 2px at 12% 30%, rgba(255,255,255,.5) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 70% 15%, rgba(255,255,255,.35) 50%, transparent 51%),
+    radial-gradient(2px 2px at 85% 60%, rgba(255,255,255,.4) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 35% 80%, rgba(255,255,255,.3) 50%, transparent 51%);
+  animation:skyTwinkle 4s ease-in-out infinite alternate;
+}
+@keyframes skyTwinkle { from{opacity:.5} to{opacity:1} }
+
+.stage-note { color:#8d93a8; font-size:12px; letter-spacing:2px; z-index:2; }
+
+/* ---------- 手机壳 ---------- */
+#phone {
+  width:min(430px, 100vw); height:min(920px, calc(100vh - 56px));
+  border-radius:40px; padding:10px; position:relative; z-index:1;
+  background:linear-gradient(160deg,#3d4664,#232a40);
+  box-shadow:0 30px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.15);
+}
+
+#app {
+  width:100%; height:100%; border-radius:32px; overflow:hidden; position:relative;
+  background:linear-gradient(180deg,var(--bg1),var(--bg2));
+  --bg1:#FFF6DF; --bg2:#FBE3B0;
+  --green:#72CC55; --green-d:#48992F;
+  --blue:#57ABEF; --blue-d:#2F7FC0;
+  --purple:#A06FF2; --purple-d:#7744C9;
+  --pink:#FF7FB2;  --pink-d:#E04E86;
+  --gold:#FFC93C;  --gold-d:#E19A00;
+  --panel:#FFFDF6; --panel-line:#EBD9AE; --panel-d:#E3CB8E;
+  --ink:#5B4030; --ink-soft:#8A6A4F;
+  --cell-hi:#FFE9A8;
+  transition:background .6s ease;
+  font-size:16px;
+}
+
+/* ---------- 通用：屏幕 ---------- */
+.screen {
+  position:absolute; inset:0; display:none; flex-direction:column;
+  padding-top:env(safe-area-inset-top);
+}
+.screen.active { display:flex; animation:screenIn .42s cubic-bezier(.22,1.2,.36,1) both; }
+@keyframes screenIn { from{opacity:0; transform:scale(.94) translateY(14px)} to{opacity:1; transform:none} }
+
+/* ---------- 通用：顶栏 ---------- */
+.topbar {
+  display:flex; align-items:center; gap:10px; padding:14px 16px 8px; z-index:5;
+}
+.spacer { flex:1; }
+
+.coin-pill {
+  display:flex; align-items:center; gap:6px;
+  background:var(--panel); border:2.5px solid var(--panel-line);
+  box-shadow:0 3px 0 var(--panel-d); border-radius:999px;
+  padding:5px 14px 5px 8px; font-weight:800; color:var(--ink); font-size:16px;
+}
+.coin-ic { font-size:18px; animation:coinBob 2.6s ease-in-out infinite; display:inline-block; }
+@keyframes coinBob { 0%,100%{transform:translateY(0) rotate(-6deg)} 50%{transform:translateY(-2px) rotate(6deg)} }
+.coin-pill b.bump { animation:numBump .4s cubic-bezier(.2,1.6,.4,1); display:inline-block; }
+@keyframes numBump { 40%{transform:scale(1.45); color:var(--gold-d)} }
+
+.icon-btn {
+  width:42px; height:42px; border:none; border-radius:14px; font-size:20px; cursor:pointer;
+  background:var(--panel); border:2.5px solid var(--panel-line);
+  box-shadow:0 3px 0 var(--panel-d); color:var(--ink);
+  transition:transform .15s cubic-bezier(.2,1.6,.4,1), box-shadow .15s;
+}
+.icon-btn:active { transform:translateY(3px); box-shadow:0 0 0 var(--panel-d); }
+
+.back-btn {
+  width:42px; height:42px; border:none; border-radius:50%; cursor:pointer;
+  background:linear-gradient(180deg,#fff,#f3e3bb); border:2.5px solid var(--panel-line);
+  box-shadow:0 3px 0 var(--panel-d); color:var(--ink); font-size:20px; font-weight:800;
+  transition:transform .15s cubic-bezier(.2,1.6,.4,1), box-shadow .15s;
+}
+.back-btn:active { transform:translateY(3px); box-shadow:0 0 0 var(--panel-d); }
+
+.title-chip {
+  font-size:20px; color:var(--ink); font-weight:800;
+  text-shadow:0 2px 0 rgba(255,255,255,.8);
+}
+
+/* ---------- 糖果按钮 ---------- */
+.btn-candy {
+  position:relative; border:none; cursor:pointer; color:#fff;
+  font-family:inherit; font-weight:800; letter-spacing:1px;
+  border-radius:18px; padding:13px 26px; font-size:18px;
+  text-shadow:0 2px 0 rgba(0,0,0,.22);
+  transition:transform .13s cubic-bezier(.2,1.6,.4,1), box-shadow .13s, filter .2s;
+  overflow:hidden;
+}
+.btn-candy::before { /* 顶部高光带 */
+  content:''; position:absolute; left:8%; right:8%; top:7%; height:34%;
+  background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.05));
+  border-radius:999px; pointer-events:none;
+}
+.btn-candy::after { /* 流光 */
+  content:''; position:absolute; top:-20%; bottom:-20%; width:36%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.5),transparent);
+  left:-60%; transform:skewX(-18deg); animation:sheen 3.2s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes sheen { 0%,55%{left:-60%} 85%,100%{left:130%} }
+.btn-candy:active { transform:translateY(4px) scale(.98); }
+.btn-green  { background:linear-gradient(180deg,#8FDD6F,var(--green) 55%,var(--green-d)); box-shadow:0 5px 0 var(--green-d), 0 12px 20px rgba(72,153,47,.35); }
+.btn-green:active  { box-shadow:0 1px 0 var(--green-d); }
+.btn-blue   { background:linear-gradient(180deg,#7CC2F5,var(--blue) 55%,var(--blue-d)); box-shadow:0 5px 0 var(--blue-d), 0 12px 20px rgba(47,127,192,.3); }
+.btn-blue:active   { box-shadow:0 1px 0 var(--blue-d); }
+.btn-purple { background:linear-gradient(180deg,#BC94F7,var(--purple) 55%,var(--purple-d)); box-shadow:0 5px 0 var(--purple-d), 0 12px 20px rgba(119,68,201,.3); }
+.btn-purple:active { box-shadow:0 1px 0 var(--purple-d); }
+.btn-pink   { background:linear-gradient(180deg,#FFA5C6,var(--pink) 55%,var(--pink-d)); box-shadow:0 5px 0 var(--pink-d), 0 12px 20px rgba(224,78,134,.3); }
+.btn-pink:active   { box-shadow:0 1px 0 var(--pink-d); }
+.btn-gold   { background:linear-gradient(180deg,#FFE083,var(--gold) 55%,var(--gold-d)); box-shadow:0 5px 0 var(--gold-d), 0 12px 20px rgba(225,154,0,.35); }
+.btn-gold:active   { box-shadow:0 1px 0 var(--gold-d); }
+.btn-ghost  { background:linear-gradient(180deg,#fff,#f3e3bb); color:var(--ink); text-shadow:none; box-shadow:0 5px 0 var(--panel-d); border:2.5px solid var(--panel-line); }
+.btn-ghost:active { box-shadow:0 1px 0 var(--panel-d); }
+
+/* ============ 主界面 ============ */
+.deco-layer { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
+.cloud {
+  position:absolute; width:110px; height:38px; border-radius:999px; background:rgba(255,255,255,.85);
+  filter:drop-shadow(0 6px 0 rgba(212,175,110,.25));
+}
+.cloud::before,.cloud::after { content:''; position:absolute; background:inherit; border-radius:50%; }
+.cloud::before { width:52px; height:52px; top:-24px; left:18px; }
+.cloud::after { width:38px; height:38px; top:-16px; right:20px; }
+.cloud.c1 { top:9%;  left:-130px; animation:cloudDrift 34s linear infinite; }
+.cloud.c2 { top:22%; left:-130px; animation:cloudDrift 46s linear 6s infinite; transform:scale(.7); }
+.cloud.c3 { top:4%;  left:-130px; animation:cloudDrift 40s linear 14s infinite; transform:scale(.85); }
+@keyframes cloudDrift { to { transform:translateX(700px) } }
+
+.deco-star { position:absolute; font-size:20px; animation:twinkle 2.4s ease-in-out infinite; filter:drop-shadow(0 0 6px rgba(255,214,64,.9)); }
+@keyframes twinkle { 0%,100%{transform:scale(1) rotate(-8deg); opacity:.9} 50%{transform:scale(.72) rotate(10deg); opacity:.45} }
+
+.home-hill { position:absolute; bottom:-40px; left:-10%; right:-10%; height:190px; border-radius:50% 50% 0 0; }
+.home-hill.h1 { background:#B9E48A; box-shadow:inset 0 10px 0 rgba(255,255,255,.35); }
+.home-hill.h2 { background:#9AD367; width:80%; left:-25%; bottom:-70px; height:170px; opacity:.9; }
+.home-hill.h3 { background:#8CC857; width:70%; right:-25%; left:auto; bottom:-80px; height:160px; }
+
+.home-body { position:relative; z-index:1; flex:1; display:flex; flex-direction:column; align-items:center; padding:0 22px 26px; }
+
+.home-logo { margin-top:34px; text-align:center; animation:logoDrop .7s cubic-bezier(.2,1.5,.35,1) both; }
+@keyframes logoDrop { from{transform:translateY(-60px) scale(.6); opacity:0} }
+.logo-badge {
+  display:inline-block; background:var(--purple); color:#fff; font-size:12px; letter-spacing:4px;
+  padding:4px 16px; border-radius:999px; box-shadow:0 3px 0 var(--purple-d), inset 0 2px 0 rgba(255,255,255,.35);
+  transform:rotate(-2deg); margin-bottom:10px;
+}
+.logo-title {
+  font-size:56px; color:var(--gold); line-height:1.05; letter-spacing:4px;
+  -webkit-text-stroke:2px #A96B00;
+  text-shadow:0 3px 0 #C98A00, 0 6px 0 rgba(169,107,0,.55), 0 14px 22px rgba(169,107,0,.35);
+  animation:logoBob 3.4s ease-in-out infinite;
+}
+@keyframes logoBob { 0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-7px) rotate(1deg)} }
+.logo-sub {
+  margin-top:12px; font-size:14px; color:var(--ink-soft);
+  background:rgba(255,255,255,.75); border:2px solid var(--panel-line);
+  padding:5px 14px; border-radius:999px; box-shadow:0 3px 0 var(--panel-d);
+}
+
+.home-mascot { position:relative; margin:22px 0 10px; animation:mascotIn .8s .25s cubic-bezier(.2,1.6,.35,1) both; }
+@keyframes mascotIn { from{transform:scale(0) rotate(-30deg)} }
+.mascot-ring {
+  position:absolute; inset:-26px; border-radius:50%;
+  border:4px dashed rgba(255,201,60,.75); animation:ringSpin 14s linear infinite;
+}
+@keyframes ringSpin { to{transform:rotate(360deg)} }
+.mascot-core {
+  width:118px; height:118px; border-radius:36px; display:grid; place-items:center; font-size:62px;
+  background:linear-gradient(160deg,#FFE683,#FFB84D);
+  border:5px solid #fff; box-shadow:0 8px 0 #D98E00, 0 18px 30px rgba(217,142,0,.4);
+  animation:mascotBob 2.8s ease-in-out infinite;
+}
+@keyframes mascotBob { 0%,100%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-8px) rotate(3deg)} }
+
+.home-actions { margin-top:auto; width:100%; display:flex; flex-direction:column; align-items:center; gap:18px; }
+
+.btn-play {
+  width:82%; padding:20px 0 22px; font-size:27px; letter-spacing:3px; border-radius:26px;
+  display:flex; align-items:center; justify-content:center; gap:12px;
+  animation:popIn .6s .4s cubic-bezier(.2,1.6,.35,1) both, playBreath 2.6s 1.2s ease-in-out infinite;
+}
+@keyframes popIn { from{transform:scale(0)} }
+@keyframes playBreath { 0%,100%{transform:scale(1)} 50%{transform:scale(1.035)} }
+.play-tri {
+  width:0; height:0; border-left:16px solid rgba(255,255,255,.95);
+  border-top:10px solid transparent; border-bottom:10px solid transparent;
+  filter:drop-shadow(0 2px 0 rgba(0,0,0,.2));
+}
+
+.quick-row { display:flex; gap:22px; }
+.quick-btn {
+  display:flex; flex-direction:column; align-items:center; gap:7px; border:none; cursor:pointer;
+  background:none; font-family:inherit; color:var(--ink); font-size:13px; font-weight:800;
+  animation:popIn .55s cubic-bezier(.2,1.6,.35,1) both;
+}
+.quick-btn:nth-child(1){animation-delay:.55s} .quick-btn:nth-child(2){animation-delay:.65s} .quick-btn:nth-child(3){animation-delay:.75s}
+.quick-ic {
+  width:66px; height:66px; border-radius:50%; display:grid; place-items:center; font-size:30px;
+  border:4px solid #fff; transition:transform .18s cubic-bezier(.2,1.6,.4,1);
+}
+.quick-btn:hover .quick-ic { transform:translateY(-4px) rotate(-6deg) scale(1.06); }
+.quick-btn:active .quick-ic { transform:translateY(3px) scale(.95); }
+.q-purple { background:linear-gradient(180deg,#BC94F7,var(--purple)); box-shadow:0 5px 0 var(--purple-d),0 12px 18px rgba(119,68,201,.35); }
+.q-gold   { background:linear-gradient(180deg,#FFE083,var(--gold)); box-shadow:0 5px 0 var(--gold-d),0 12px 18px rgba(225,154,0,.35); }
+.q-pink   { background:linear-gradient(180deg,#FFA5C6,var(--pink)); box-shadow:0 5px 0 var(--pink-d),0 12px 18px rgba(224,78,134,.35); }
+.quick-btn .badge-dot {
+  position:absolute; margin-left:40px; margin-top:-4px; width:14px; height:14px; border-radius:50%;
+  background:#FF4D4D; border:2.5px solid #fff; box-shadow:0 0 8px rgba(255,77,77,.8);
+  animation:dotPing 1.6s ease-out infinite;
+}
+@keyframes dotPing { 0%{box-shadow:0 0 0 0 rgba(255,77,77,.6)} 100%{box-shadow:0 0 0 10px rgba(255,77,77,0)} }
+
+.daily-tip {
+  font-size:13px; color:var(--ink-soft); background:rgba(255,255,255,.7);
+  border:2px dashed var(--panel-line); padding:7px 16px; border-radius:999px;
+  animation:popIn .5s .9s cubic-bezier(.2,1.6,.35,1) both;
+}
+.daily-tip b { color:var(--blue-d); }
+
+/* ============ 章节地图 ============ */
+.chapter-banner { display:flex; align-items:center; gap:10px; padding:4px 16px 10px; z-index:4; }
+.banner-arrow {
+  width:36px; height:36px; border-radius:50%; border:none; cursor:pointer; flex:none;
+  background:var(--panel); border:2.5px solid var(--panel-line); box-shadow:0 3px 0 var(--panel-d);
+  font-size:17px; font-weight:800; color:var(--ink); transition:transform .15s;
+}
+.banner-arrow:active { transform:translateY(2px); box-shadow:none; }
+.banner-arrow.dim { opacity:.35; pointer-events:none; }
+
+.chapter-card {
+  flex:1; height:86px; border-radius:22px; position:relative; overflow:hidden; cursor:pointer;
+  border:4px solid rgba(255,255,255,.9);
+  box-shadow:0 6px 0 rgba(0,0,0,.15), inset 0 3px 0 rgba(255,255,255,.4);
+  display:flex; align-items:center; gap:12px; padding:0 16px; color:#fff;
+  animation:bannerFlip .45s cubic-bezier(.2,1.4,.35,1) both;
+}
+@keyframes bannerFlip { from{transform:rotateY(70deg); opacity:0} }
+.chapter-emoji { font-size:44px; filter:drop-shadow(0 4px 4px rgba(0,0,0,.25)); animation:mascotBob 3s ease-in-out infinite; }
+.chapter-meta { flex:1; }
+.chapter-name { font-size:21px; font-weight:800; text-shadow:0 2px 0 rgba(0,0,0,.25); }
+.chapter-sub { font-size:12px; opacity:.92; margin-top:3px; text-shadow:0 1px 0 rgba(0,0,0,.2); }
+.chapter-lock-ic {
+  position:absolute; right:14px; top:50%; transform:translateY(-50%); text-align:center;
+  background:rgba(0,0,0,.32); border-radius:14px; padding:6px 10px; font-size:12px; line-height:1.3;
+  border:2px solid rgba(255,255,255,.35);
+}
+.chapter-lock-ic b { display:block; font-size:14px; }
+
+.map-scroll { flex:1; overflow-y:auto; overflow-x:hidden; position:relative; scrollbar-width:none; }
+.map-scroll::-webkit-scrollbar { display:none; }
+.map-canvas { position:relative; width:100%; min-height:100%; }
+.map-path { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.map-path path { fill:none; stroke:rgba(255,255,255,.85); stroke-width:7px; stroke-linecap:round; stroke-dasharray:1 22; animation:dashFlow 1.2s linear infinite; }
+@keyframes dashFlow { to { stroke-dashoffset:-23px; } }
+
+.map-deco { position:absolute; font-size:64px; opacity:.14; pointer-events:none; animation:mapDecoFloat 7s ease-in-out infinite; filter:saturate(1.4); }
+@keyframes mapDecoFloat { 0%,100%{transform:translateY(0) rotate(-6deg)} 50%{transform:translateY(-16px) rotate(8deg)} }
+
+.node {
+  position:absolute; width:58px; height:58px; margin:-29px 0 0 -29px; border:none; cursor:pointer;
+  border-radius:50%; font-family:inherit; z-index:2;
+  display:grid; place-items:center; color:#fff; font-weight:800;
+  animation:nodePop .5s cubic-bezier(.2,1.7,.35,1) both;
+}
+@keyframes nodePop { from{transform:scale(0)} }
+.node .n-num { font-size:20px; text-shadow:0 2px 0 rgba(0,0,0,.25); position:relative; top:-6px; }
+.node .n-stars { position:absolute; bottom:-9px; font-size:11px; letter-spacing:-1px; white-space:nowrap; text-shadow:0 1px 1px rgba(0,0,0,.3); }
+.node.done { background:linear-gradient(180deg,#8FDD6F,var(--green)); border:4px solid #fff; box-shadow:0 5px 0 var(--green-d), 0 10px 16px rgba(72,153,47,.4); }
+.node.current { background:linear-gradient(180deg,#FFE083,var(--gold)); border:4px solid #fff; box-shadow:0 5px 0 var(--gold-d), 0 10px 16px rgba(225,154,0,.45); z-index:3; }
+.node.current::after {
+  content:''; position:absolute; inset:-11px; border-radius:50%;
+  border:4px solid rgba(255,201,60,.85); animation:nodePing 1.5s ease-out infinite;
+}
+@keyframes nodePing { 0%{transform:scale(.82); opacity:1} 100%{transform:scale(1.35); opacity:0} }
+.node.current .n-num { animation:nodeNumBob 1.2s ease-in-out infinite; }
+@keyframes nodeNumBob { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
+.node.locked { background:linear-gradient(180deg,#D8D2C4,#B8B0A0); border:4px solid #EFE9DC; box-shadow:0 5px 0 #948C7C; }
+.node.locked .n-num { display:none; }
+.node.locked::before { content:'🔒'; font-size:22px; }
+.node.boss { width:70px; height:70px; margin:-35px 0 0 -35px; }
+
+/* ============ 挑战中心 ============ */
+.game-tabs {
+  display:flex; gap:8px; padding:8px 16px 12px; overflow-x:auto; scrollbar-width:none; z-index:3;
+}
+.game-tabs::-webkit-scrollbar{ display:none; }
+.game-tab {
+  flex:none; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer;
+  border:none; background:var(--panel); font-family:inherit; color:var(--ink);
+  border:2.5px solid var(--panel-line); box-shadow:0 3px 0 var(--panel-d);
+  border-radius:16px; padding:8px 12px 6px; min-width:66px;
+  transition:transform .15s cubic-bezier(.2,1.6,.4,1);
+}
+.game-tab:active { transform:translateY(2px); box-shadow:none; }
+.game-tab .gt-ic { font-size:24px; }
+.game-tab .gt-name { font-size:11px; font-weight:800; }
+.game-tab.on { background:linear-gradient(180deg,#BC94F7,var(--purple)); color:#fff; border-color:#fff; box-shadow:0 3px 0 var(--purple-d), 0 8px 14px rgba(119,68,201,.4); }
+
+.challenge-list { flex:1; overflow-y:auto; padding:4px 16px 24px; display:flex; flex-direction:column; gap:14px; scrollbar-width:none; }
+.challenge-list::-webkit-scrollbar{ display:none; }
+.ch-card {
+  background:var(--panel); border:3px solid var(--panel-line); box-shadow:0 5px 0 var(--panel-d);
+  border-radius:22px; padding:16px; display:flex; gap:14px; align-items:center; position:relative; overflow:hidden;
+  animation:cardUp .5s cubic-bezier(.2,1.4,.35,1) both;
+}
+.ch-card:nth-child(2){animation-delay:.08s} .ch-card:nth-child(3){animation-delay:.16s}
+@keyframes cardUp { from{transform:translateY(26px); opacity:0} }
+.ch-card.done-card { filter:saturate(.6); }
+.ch-ic {
+  width:58px; height:58px; flex:none; border-radius:18px; display:grid; place-items:center; font-size:28px;
+  border:3px solid rgba(255,255,255,.9); color:#fff;
+}
+.ch-daily .ch-ic  { background:linear-gradient(180deg,#8FDD6F,var(--green)); box-shadow:0 4px 0 var(--green-d); }
+.ch-weekly .ch-ic { background:linear-gradient(180deg,#7CC2F5,var(--blue)); box-shadow:0 4px 0 var(--blue-d); }
+.ch-monthly .ch-ic{ background:linear-gradient(180deg,#FFE083,var(--gold)); box-shadow:0 4px 0 var(--gold-d); }
+.ch-info { flex:1; min-width:0; }
+.ch-name { font-size:17px; font-weight:800; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.ch-tag { font-size:10px; padding:2px 8px; border-radius:999px; color:#fff; }
+.ch-daily .ch-tag { background:var(--green); box-shadow:0 2px 0 var(--green-d); }
+.ch-weekly .ch-tag { background:var(--blue); box-shadow:0 2px 0 var(--blue-d); }
+.ch-monthly .ch-tag { background:var(--gold-d); }
+.ch-count { font-size:12px; color:var(--blue-d); font-weight:800; margin-top:4px; }
+.ch-best { font-size:11px; color:var(--ink-soft); margin-top:3px; }
+.ch-go {
+  flex:none; border:none; cursor:pointer; font-family:inherit; font-weight:800; color:#fff;
+  border-radius:14px; padding:11px 16px; font-size:15px;
+  background:linear-gradient(180deg,#8FDD6F,var(--green)); box-shadow:0 4px 0 var(--green-d);
+  transition:transform .13s cubic-bezier(.2,1.6,.4,1);
+}
+.ch-go:active { transform:translateY(3px); box-shadow:none; }
+.ch-card.done-card .ch-go { background:linear-gradient(180deg,#CFC8B8,#B4AC98); box-shadow:0 4px 0 #948C7C; }
+.ch-stamp {
+  position:absolute; right:74px; top:50%; transform:translateY(-50%) rotate(-14deg);
+  font-size:15px; font-weight:800; color:#48A030; border:2.5px solid #48A030; border-radius:10px;
+  padding:2px 8px; background:rgba(160,230,120,.25); animation:stampIn .4s cubic-bezier(.2,1.8,.35,1) both;
+}
+@keyframes stampIn { from{transform:translateY(-50%) rotate(-14deg) scale(2.2); opacity:0} }
+
+/* ============ 成就 ============ */
+.achv-hero {
+  margin:4px 16px 12px; padding:16px; border-radius:22px; position:relative; overflow:hidden;
+  background:linear-gradient(150deg,#FFE083,var(--gold)); border:4px solid #fff;
+  box-shadow:0 6px 0 var(--gold-d), 0 14px 24px rgba(225,154,0,.35);
+  display:flex; align-items:center; gap:16px; color:#7A5200;
+}
+.achv-ring { position:relative; width:76px; height:76px; flex:none; }
+.achv-ring svg { transform:rotate(-90deg); }
+.achv-ring .track { stroke:rgba(122,82,0,.18); }
+.achv-ring .bar { stroke:#fff; stroke-linecap:round; transition:stroke-dashoffset 1s cubic-bezier(.2,.8,.3,1); }
+.achv-ring .ring-num {
+  position:absolute; inset:0; display:grid; place-items:center; font-size:17px; font-weight:800;
+}
+.achv-trophy { font-size:44px; animation:mascotBob 3s ease-in-out infinite; filter:drop-shadow(0 4px 4px rgba(0,0,0,.2)); }
+.achv-hero-text { flex:1; }
+.achv-hero-title { font-size:19px; font-weight:800; text-shadow:0 1px 0 rgba(255,255,255,.5); }
+.achv-hero-sub { font-size:12px; margin-top:4px; opacity:.85; }
+
+.achv-list { flex:1; overflow-y:auto; padding:0 16px 24px; display:flex; flex-direction:column; gap:11px; scrollbar-width:none; }
+.achv-list::-webkit-scrollbar{ display:none; }
+.achv-item {
+  display:flex; gap:13px; align-items:center; padding:13px 14px; border-radius:18px;
+  background:var(--panel); border:2.5px solid var(--panel-line); box-shadow:0 4px 0 var(--panel-d);
+  animation:cardUp .45s cubic-bezier(.2,1.4,.35,1) both;
+}
+.achv-item:nth-child(2){animation-delay:.05s} .achv-item:nth-child(3){animation-delay:.1s}
+.achv-item:nth-child(4){animation-delay:.15s} .achv-item:nth-child(5){animation-delay:.2s}
+.achv-item:nth-child(6){animation-delay:.25s} .achv-item:nth-child(7){animation-delay:.3s}
+.achv-item:nth-child(8){animation-delay:.35s}
+.achv-ic {
+  width:50px; height:50px; flex:none; border-radius:15px; display:grid; place-items:center; font-size:24px;
+  background:linear-gradient(180deg,#E8E0CE,#CFC5AC); box-shadow:0 3px 0 #B0A68C; filter:grayscale(.7);
+}
+.achv-item.unlocked .achv-ic { background:linear-gradient(180deg,#FFE083,var(--gold)); box-shadow:0 3px 0 var(--gold-d); filter:none; animation:achvGlow 2s ease-in-out infinite; }
+@keyframes achvGlow { 0%,100%{box-shadow:0 3px 0 var(--gold-d),0 0 0px rgba(255,201,60,0)} 50%{box-shadow:0 3px 0 var(--gold-d),0 0 18px rgba(255,201,60,.65)} }
+.achv-info { flex:1; min-width:0; }
+.achv-name { font-size:15px; font-weight:800; color:var(--ink); }
+.achv-item.unlocked .achv-name::after { content:'✓'; color:#48A030; margin-left:7px; font-size:13px; }
+.achv-desc { font-size:11.5px; color:var(--ink-soft); margin:3px 0 7px; }
+.achv-bar { height:11px; border-radius:999px; background:#EDE3C8; overflow:hidden; border:1.5px solid #DDCEA4; }
+.achv-bar i { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#8FDD6F,var(--green)); box-shadow:inset 0 2px 0 rgba(255,255,255,.5); transition:width .8s cubic-bezier(.2,.8,.3,1); }
+.achv-item.unlocked .achv-bar i { background:linear-gradient(90deg,#FFE083,var(--gold)); }
+.achv-count { font-size:11px; color:var(--ink-soft); margin-top:4px; text-align:right; }
+
+/* ============ 商城 ============ */
+.shop-grid {
+  flex:1; overflow-y:auto; padding:6px 16px 24px; display:grid; grid-template-columns:1fr 1fr; gap:13px;
+  align-content:start; scrollbar-width:none;
+}
+.shop-grid::-webkit-scrollbar{ display:none; }
+.skin-card {
+  background:var(--panel); border:3px solid var(--panel-line); box-shadow:0 5px 0 var(--panel-d);
+  border-radius:20px; padding:12px 12px 14px; display:flex; flex-direction:column; align-items:center; gap:9px;
+  animation:cardUp .5s cubic-bezier(.2,1.4,.35,1) both; position:relative;
+}
+.skin-card:nth-child(2){animation-delay:.06s} .skin-card:nth-child(3){animation-delay:.12s}
+.skin-card:nth-child(4){animation-delay:.18s} .skin-card:nth-child(5){animation-delay:.24s} .skin-card:nth-child(6){animation-delay:.3s}
+.skin-eq-mark {
+  position:absolute; top:-8px; right:-6px; background:linear-gradient(180deg,#8FDD6F,var(--green));
+  color:#fff; font-size:10.5px; font-weight:800; padding:4px 10px; border-radius:999px;
+  border:2.5px solid #fff; box-shadow:0 3px 6px rgba(72,153,47,.5); transform:rotate(6deg); z-index:2;
+  animation:stampIn .4s .2s cubic-bezier(.2,1.8,.35,1) both;
+}
+.skin-preview {
+  width:100%; border-radius:14px; padding:9px; border:2.5px solid rgba(0,0,0,.12);
+  display:grid; grid-template-columns:repeat(6,1fr); gap:3px; aspect-ratio:1;
+}
+.skin-cell { border-radius:5px; }
+.skin-name { font-size:14px; font-weight:800; color:var(--ink); }
+.skin-desc { font-size:10.5px; color:var(--ink-soft); margin-top:-5px; }
+.skin-act {
+  border:none; cursor:pointer; font-family:inherit; font-weight:800; color:#fff; width:100%;
+  border-radius:13px; padding:9px 0; font-size:14px; display:flex; align-items:center; justify-content:center; gap:5px;
+  background:linear-gradient(180deg,#8FDD6F,var(--green)); box-shadow:0 4px 0 var(--green-d);
+  transition:transform .13s cubic-bezier(.2,1.6,.4,1);
+}
+.skin-act:active { transform:translateY(3px); box-shadow:none; }
+.skin-act.use-btn { background:linear-gradient(180deg,#7CC2F5,var(--blue)); box-shadow:0 4px 0 var(--blue-d); }
+.skin-act.using-btn { background:linear-gradient(180deg,#E8E0CE,#CFC5AC); box-shadow:0 4px 0 #B0A68C; color:var(--ink-soft); pointer-events:none; }
+.skin-act.locked-btn { background:linear-gradient(180deg,#D8D2C4,#B8B0A0); box-shadow:0 4px 0 #948C7C; }
+
+/* ============ 玩法界面 ============ */
+.game-top { display:flex; align-items:center; gap:10px; padding:12px 14px 8px; z-index:5; }
+.level-chip {
+  flex:1; text-align:center; background:var(--panel); border:2.5px solid var(--panel-line);
+  box-shadow:0 3px 0 var(--panel-d); border-radius:16px; padding:5px 10px; color:var(--ink);
+}
+.level-chip .lv-name { font-size:15px; font-weight:800; }
+.level-chip .lv-game { font-size:11px; color:var(--ink-soft); }
+.timer-chip {
+  background:linear-gradient(180deg,#7CC2F5,var(--blue)); color:#fff; font-weight:800;
+  border:2.5px solid #fff; box-shadow:0 3px 0 var(--blue-d); border-radius:14px; padding:7px 12px; font-size:14px;
+  min-width:76px; text-align:center;
+}
+
+.board-area { flex:1; display:flex; align-items:center; justify-content:center; padding:6px 16px; position:relative; }
+.board-frame {
+  width:min(100%, 400px); aspect-ratio:1; border-radius:20px; padding:9px; position:relative;
+  animation:boardIn .5s cubic-bezier(.2,1.4,.35,1) both;
+  background:var(--sk-frame,#8A5A2B);
+  border:4px solid rgba(255,255,255,.55);
+  box-shadow:0 8px 0 rgba(0,0,0,.25), 0 18px 30px rgba(0,0,0,.25), inset 0 3px 0 rgba(255,255,255,.25);
+}
+@keyframes boardIn { from{transform:scale(.7); opacity:0} }
+
+.sudoku-grid, .mine-grid { width:100%; height:100%; display:grid; gap:2px; position:relative; }
+.sudoku-grid { grid-template-columns:repeat(9,1fr); grid-template-rows:repeat(9,1fr); }
+.mine-grid { grid-template-columns:repeat(9,1fr); grid-template-rows:repeat(9,1fr); gap:3px; }
+.s-cell, .m-cell {
+  border-radius:6px; display:grid; place-items:center; font-weight:800; cursor:pointer;
+  font-family:'Baloo 2','ZCOOL KuaiLe',sans-serif; user-select:none; position:relative;
+  transition:background .12s, transform .1s;
+}
+.s-cell { font-size:clamp(16px,4.6vw,24px); background:var(--sk-cell); color:var(--sk-given); }
+.s-cell.alt { background:var(--sk-cell-alt); }
+.s-cell.given { color:var(--sk-given); }
+.s-cell.user { color:var(--sk-user); }
+.s-cell.err { background:#FFB3B3 !important; color:#C22 !important; animation:shake .35s; }
+.s-cell.sel { background:var(--sk-hi) !important; transform:scale(.92); box-shadow:inset 0 0 0 2.5px var(--sk-sel,#FFC93C); z-index:1; }
+.s-cell.peer { background:var(--sk-peer, rgba(255,201,60,.28)); }
+.s-cell.same { color:var(--sk-same,#0078D7); font-weight:800; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
+
+.m-cell { font-size:clamp(13px,3.8vw,19px); background:var(--sk-cell-alt,#E8B96B); border:2px solid rgba(255,255,255,.35); box-shadow:0 2px 0 rgba(0,0,0,.18); }
+.m-cell.open { background:var(--sk-cell,#F7E7C5); box-shadow:none; border-color:rgba(0,0,0,.06); animation:cellFlip .25s; }
+@keyframes cellFlip { from{transform:rotateX(90deg)} }
+.m-cell.boom { background:#E84D4D !important; animation:boomFx .5s; }
+@keyframes boomFx { 0%{transform:scale(1.6)} 40%{transform:scale(.7)} }
+.m-cell.flag { font-size:clamp(12px,3.4vw,17px); }
+.m-cell.wrong-flag { background:#FFB3B3; }
+.n1{color:#2F7FC0}.n2{color:#48A030}.n3{color:#E04E4E}.n4{color:#7744C9}.n5{color:#C96A00}.n6{color:#0FA3A3}.n7{color:#B03030}.n8{color:#666}.n9{color:#555}
+
+.board-toolbar { padding:8px 16px 22px; display:flex; flex-direction:column; gap:10px; z-index:5; }
+.num-pad { display:grid; grid-template-columns:repeat(9,1fr); gap:6px; }
+.num-key {
+  border:none; cursor:pointer; font-family:inherit; border-radius:13px; padding:11px 0 8px;
+  background:var(--panel); border:2.5px solid var(--panel-line); box-shadow:0 4px 0 var(--panel-d);
+  color:var(--ink); display:flex; flex-direction:column; align-items:center; gap:1px;
+  transition:transform .12s cubic-bezier(.2,1.6,.4,1), box-shadow .12s;
+}
+.num-key b { font-size:20px; font-weight:800; }
+.num-key span { font-size:9.5px; color:var(--ink-soft); }
+.num-key:active { transform:translateY(3px); box-shadow:0 1px 0 var(--panel-d); }
+.num-key.used { opacity:.32; pointer-events:none; }
+.tool-row { display:flex; gap:10px; }
+.tool-btn {
+  flex:1; border:none; cursor:pointer; font-family:inherit; font-weight:800; color:var(--ink);
+  background:var(--panel); border:2.5px solid var(--panel-line); box-shadow:0 4px 0 var(--panel-d);
+  border-radius:15px; padding:9px 0 7px; font-size:12.5px; display:flex; flex-direction:column; align-items:center; gap:2px;
+  transition:transform .12s cubic-bezier(.2,1.6,.4,1);
+}
+.tool-btn .tb-ic { font-size:20px; }
+.tool-btn:active { transform:translateY(3px); box-shadow:0 1px 0 var(--panel-d); }
+.tool-btn.off { opacity:.4; pointer-events:none; }
+.tool-btn.armed { background:linear-gradient(180deg,#FFE083,var(--gold)); border-color:#fff; box-shadow:0 4px 0 var(--gold-d); }
+
+/* 静态玩法棋盘 */
+.static-grid { width:100%; height:100%; display:grid; gap:2px; }
+.static-grid.g7 { grid-template-columns:repeat(7,1fr); grid-template-rows:repeat(7,1fr); }
+.static-grid.g9 { grid-template-columns:repeat(9,1fr); grid-template-rows:repeat(9,1fr); }
+.static-grid.g10 { grid-template-columns:repeat(10,1fr); grid-template-rows:repeat(10,1fr); }
+.st-cell {
+  border-radius:5px; display:grid; place-items:center; font-weight:800; position:relative;
+  background:var(--sk-cell); color:var(--sk-given); font-size:clamp(11px,3vw,16px); cursor:pointer;
+  transition:transform .12s;
+}
+.st-cell:hover { transform:scale(1.06); }
+.st-cell .cage-sum { position:absolute; top:1px; left:4px; font-size:clamp(8px,2.2vw,11px); color:var(--sk-user); opacity:.9; }
+.demo-badge {
+  position:absolute; top:-11px; left:50%; transform:translateX(-50%) rotate(-2deg); z-index:3;
+  background:linear-gradient(180deg,#FFE083,var(--gold)); color:#7A5200; font-size:11px; font-weight:800;
+  padding:4px 14px; border-radius:999px; border:2.5px solid #fff; box-shadow:0 3px 0 var(--gold-d);
+  animation:stampIn .5s .3s cubic-bezier(.2,1.8,.35,1) both; white-space:nowrap;
+}
+.demo-btn-row { display:flex; gap:10px; padding:0 16px 22px; z-index:5; }
+.demo-btn-row .btn-candy { flex:1; padding:12px 0; font-size:15px; }
+
+/* ============ 弹窗 ============ */
+#modal-root { position:absolute; inset:0; z-index:50; display:none; align-items:center; justify-content:center; }
+#modal-root.show { display:flex; }
+.modal-mask { position:absolute; inset:0; background:rgba(45,32,14,.45); backdrop-filter:blur(3px); animation:maskIn .3s both; }
+@keyframes maskIn { from{opacity:0} }
+.modal-box {
+  position:relative; width:82%; max-width:340px; border-radius:26px; padding:24px 22px 20px;
+  background:linear-gradient(180deg,#FFFDF6,#FFF4DC);
+  border:4px solid #fff; box-shadow:0 8px 0 var(--panel-d), 0 30px 60px rgba(0,0,0,.35);
+  display:flex; flex-direction:column; align-items:center; gap:12px;
+  animation:modalPop .45s cubic-bezier(.2,1.5,.35,1) both;
+}
+@keyframes modalPop { from{transform:scale(.55) translateY(40px); opacity:0} }
+.modal-title { font-size:22px; font-weight:800; color:var(--ink); }
+.modal-sub { font-size:13px; color:var(--ink-soft); margin-top:-8px; text-align:center; line-height:1.5; }
+.modal-btns { display:flex; gap:12px; width:100%; margin-top:6px; }
+.modal-btns .btn-candy { flex:1; padding:12px 0; font-size:16px; }
+
+/* 结算 */
+.res-stars { display:flex; gap:14px; margin:6px 0 2px; height:64px; }
+.res-star { font-size:52px; filter:drop-shadow(0 4px 6px rgba(225,154,0,.5)); opacity:0; transform:scale(0) rotate(-120deg); }
+.res-star.lit { animation:starPop .55s cubic-bezier(.2,1.8,.35,1) forwards; }
+.res-star:nth-child(2).lit{animation-delay:.25s} .res-star:nth-child(3).lit{animation-delay:.5s}
+.res-star.hollow { opacity:.9; transform:none; filter:grayscale(1) opacity(.35); animation:starHollowIn .4s .1s both; }
+@keyframes starPop { 60%{transform:scale(1.35) rotate(10deg)} 100%{opacity:1; transform:scale(1) rotate(0)} }
+@keyframes starHollowIn { from{transform:scale(0)} }
+.res-stats { display:flex; gap:18px; font-size:13px; color:var(--ink-soft); }
+.res-stats b { color:var(--ink); font-size:15px; }
+.res-coin {
+  display:flex; align-items:center; gap:8px; font-size:20px; font-weight:800; color:var(--gold-d);
+  background:linear-gradient(180deg,#FFF3C9,#FFE79E); border:2.5px solid #F0D488; border-radius:999px;
+  padding:7px 22px; box-shadow:0 3px 0 #D9B955; animation:numBump .5s .8s cubic-bezier(.2,1.6,.4,1);
+}
+.res-lose-ic { font-size:56px; animation:mascotBob 2s ease-in-out infinite; }
+
+/* Toast */
+#toast-root { position:absolute; left:0; right:0; bottom:120px; z-index:60; display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none; }
+.toast {
+  background:rgba(60,44,24,.92); color:#FFE9BE; font-size:13.5px; font-weight:800;
+  padding:10px 22px; border-radius:999px; border:2px solid rgba(255,233,190,.25);
+  animation:toastIn .35s cubic-bezier(.2,1.6,.35,1) both; box-shadow:0 8px 20px rgba(0,0,0,.35);
+}
+@keyframes toastIn { from{transform:translateY(20px) scale(.8); opacity:0} }
+.toast.out { animation:toastOut .3s both; }
+@keyframes toastOut { to{transform:translateY(10px); opacity:0} }
+
+/* 彩带画布 */
+#fx { position:absolute; inset:0; z-index:70; pointer-events:none; }
+
+/* 设置开关 */
+.set-row {
+  width:100%; display:flex; align-items:center; justify-content:space-between;
+  background:#FFF7E2; border:2px solid var(--panel-line); border-radius:14px; padding:11px 14px;
+  font-size:14.5px; color:var(--ink); font-weight:800;
+}
+.toggle { width:52px; height:28px; border-radius:999px; background:#D8CBA8; position:relative; cursor:pointer; transition:background .25s; border:none; }
+.toggle::after { content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:left .25s cubic-bezier(.2,1.4,.35,1); box-shadow:0 2px 4px rgba(0,0,0,.25); }
+.toggle.on { background:var(--green); }
+.toggle.on::after { left:27px; }
+
+/* 关卡开始弹窗图标 */
+.lv-game-ic { font-size:50px; animation:mascotBob 2.6s ease-in-out infinite; }
+.lv-meta-rows { width:100%; display:flex; flex-direction:column; gap:6px; }
+.lv-meta-row { display:flex; justify-content:space-between; font-size:13.5px; color:var(--ink-soft); background:#FFF7E2; border-radius:12px; padding:8px 14px; border:2px solid var(--panel-line); }
+.lv-meta-row b { color:var(--ink); }
+
+@media (max-width:520px) {
+  body { gap:6px; }
+  #phone { border-radius:0; padding:0; height:100vh; box-shadow:none; }
+  #app { border-radius:0; }
+  .stage-note { display:none; }
+}
+</style>
+</head>
+<body>
+
+<div class="stage-note">谜题星旅 · UI 交互原型（HTML 演示版 · 最终以 Cocos Creator 3.8 实现为准）</div>
+
+<div id="phone"><div id="app">
+
+  <!-- ============ 主界面 ============ -->
+  <section class="screen active" id="scr-home">
+    <div class="deco-layer">
+      <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+      <span class="deco-star" style="top:16%;left:14%">✨</span>
+      <span class="deco-star" style="top:30%;right:16%;animation-delay:.8s">⭐</span>
+      <span class="deco-star" style="top:52%;left:8%;animation-delay:1.4s">✨</span>
+      <span class="deco-star" style="top:46%;right:10%;animation-delay:.4s">🌟</span>
+      <div class="home-hill h2"></div><div class="home-hill h3"></div><div class="home-hill h1"></div>
+    </div>
+    <header class="topbar">
+      <div class="coin-pill"><span class="coin-ic">🪙</span><b id="coin-home">0</b></div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="btn-settings">⚙️</button>
+    </header>
+    <div class="home-body">
+      <div class="home-logo">
+        <div class="logo-badge">PUZZLE LAND</div>
+        <h1 class="logo-title">谜题星旅</h1>
+        <div class="logo-sub">数独 · 星之战 · 数方 · 杀手数独 · 扫雷</div>
+      </div>
+      <div class="home-mascot">
+        <div class="mascot-ring"></div>
+        <div class="mascot-core">🧩</div>
+      </div>
+      <div class="home-actions">
+        <button class="btn-candy btn-green btn-play" id="btn-play"><span class="play-tri"></span>开始闯关</button>
+        <div class="quick-row">
+          <button class="quick-btn" id="btn-challenge">
+            <span class="quick-ic q-purple">⚔️<span class="badge-dot"></span></span><span>挑战</span>
+          </button>
+          <button class="quick-btn" id="btn-achv">
+            <span class="quick-ic q-gold">🏆</span><span>成就</span>
+          </button>
+          <button class="quick-btn" id="btn-shop">
+            <span class="quick-ic q-pink">🛍️</span><span>商城</span>
+          </button>
+        </div>
+        <div class="daily-tip">📅 每日挑战已刷新 · 剩余 <b id="home-countdown">--:--:--</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 章节地图 ============ -->
+  <section class="screen" id="scr-chapters">
+    <header class="topbar">
+      <button class="back-btn" data-back>‹</button>
+      <div class="title-chip">闯关模式</div>
+      <div class="spacer"></div>
+      <div class="coin-pill" style="padding:5px 12px 5px 8px">⭐ <b id="ch-star-count">0</b></div>
+    </header>
+    <div class="chapter-banner">
+      <button class="banner-arrow" id="ch-prev">‹</button>
+      <div class="chapter-card" id="ch-card"></div>
+      <button class="banner-arrow" id="ch-next">›</button>
+    </div>
+    <div class="map-scroll" id="map-scroll"><div class="map-canvas" id="map-canvas"></div></div>
+  </section>
+
+  <!-- ============ 挑战中心 ============ -->
+  <section class="screen" id="scr-challenge">
+    <header class="topbar">
+      <button class="back-btn" data-back>‹</button>
+      <div class="title-chip">挑战中心</div>
+      <div class="spacer"></div>
+      <div class="coin-pill"><span class="coin-ic">🪙</span><b id="coin-ch">0</b></div>
+    </header>
+    <div class="game-tabs" id="game-tabs"></div>
+    <div class="challenge-list" id="challenge-list"></div>
+  </section>
+
+  <!-- ============ 成就 ============ -->
+  <section class="screen" id="scr-achv">
+    <header class="topbar">
+      <button class="back-btn" data-back>‹</button>
+      <div class="title-chip">成就</div>
+      <div class="spacer"></div>
+      <div class="coin-pill"><span class="coin-ic">🪙</span><b id="coin-achv">0</b></div>
+    </header>
+    <div class="achv-hero">
+      <div class="achv-ring">
+        <svg width="76" height="76"><circle class="track" cx="38" cy="38" r="31" fill="none" stroke-width="9"/>
+        <circle class="bar" id="achv-ring-bar" cx="38" cy="38" r="31" fill="none" stroke-width="9" stroke-dasharray="194.8" stroke-dashoffset="194.8"/></svg>
+        <div class="ring-num" id="achv-ring-num">0/0</div>
+      </div>
+      <div class="achv-trophy">🏆</div>
+      <div class="achv-hero-text">
+        <div class="achv-hero-title">成就殿堂</div>
+        <div class="achv-hero-sub" id="achv-hero-sub">完成成就收集星星，点亮你的荣誉之路</div>
+      </div>
+    </div>
+    <div class="achv-list" id="achv-list"></div>
+  </section>
+
+  <!-- ============ 商城 ============ -->
+  <section class="screen" id="scr-shop">
+    <header class="topbar">
+      <button class="back-btn" data-back>‹</button>
+      <div class="title-chip">皮肤商城</div>
+      <div class="spacer"></div>
+      <div class="coin-pill"><span class="coin-ic">🪙</span><b id="coin-shop">0</b></div>
+    </header>
+    <div class="shop-grid" id="shop-grid"></div>
+  </section>
+
+  <!-- ============ 玩法界面 ============ -->
+  <section class="screen" id="scr-game">
+    <header class="game-top">
+      <button class="icon-btn" id="btn-pause">⏸</button>
+      <div class="level-chip"><div class="lv-name" id="lv-name">—</div><div class="lv-game" id="lv-game">—</div></div>
+      <div class="timer-chip" id="game-timer">⏱ 00:00</div>
+    </header>
+    <div class="board-area" id="board-area"></div>
+    <div class="board-toolbar" id="board-toolbar"></div>
+    <div class="demo-btn-row" id="demo-btn-row" style="display:none"></div>
+  </section>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+  <canvas id="fx"></canvas>
+
+</div></div>
+
+<script>
+/* ================================================================
+   谜题星旅 · 原型逻辑（最终会在 Cocos Creator 3.8 + TypeScript 重写）
+   ================================================================ */
+
+/* ---------- 基础工具 ---------- */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const el = (tag, cls, html) => { const d = document.createElement(tag); if (cls) d.className = cls; if (html != null) d.innerHTML = html; return d; };
+const pad2 = n => String(n).padStart(2, '0');
+const fmtTime = s => pad2(Math.floor(s / 60)) + ':' + pad2(Math.floor(s % 60));
+
+/* 固定种子随机（保证每关谜题稳定） */
+function mulberry32(a) { return function() { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* ---------- 玩法定义 ---------- */
+const GAMES = {
+  sudoku: { name: '数独',     icon: '🔢', playable: true },
+  mine:   { name: '扫雷',     icon: '💣', playable: true },
+  shikaku:{ name: '数方',     icon: '🔲', playable: false },
+  star:   { name: '星之战',   icon: '⭐', playable: false },
+  killer: { name: '杀手数独', icon: '💀', playable: false },
+};
+const GAME_ORDER = ['sudoku', 'mine', 'shikaku', 'star', 'killer'];
+
+/* ---------- 章节配置（无尽章节原型取 6 章） ---------- */
+const CHAPTERS = [
+  { name: '森林秘境', emoji: '🌲', deco: ['🌲','🍄','🦊','🌿'],
+    bg: ['#EAF7D3', '#C6E8A0'], banner: 'linear-gradient(140deg,#8FDD6F,#4FA838)', sub: '初入谜题森林 · 基础玩法教学' },
+  { name: '糖果王国', emoji: '🍭', deco: ['🍭','🍬','🧁','🍩'],
+    bg: ['#FFE9F2', '#FFC9DF'], banner: 'linear-gradient(140deg,#FFA5C6,#F2699F)', sub: '甜蜜的谜题考验' },
+  { name: '海底奇缘', emoji: '🐠', deco: ['🐠','🐙','🪸','💧'],
+    bg: ['#D9F3FF', '#A8E0F7'], banner: 'linear-gradient(140deg,#7CC2F5,#3D95D8)', sub: '深海中的数字秘密' },
+  { name: '失落沙漠', emoji: '🏜️', deco: ['金字塔','🐍','⚱️','☀️'],
+    bg: ['#FFF2D5', '#F5DCA3'], banner: 'linear-gradient(140deg,#FFD875,#E8A93C)', sub: '黄沙之下的古老谜题' },
+  { name: '星空之旅', emoji: '🪐', deco: ['🪐','🚀','🔭','☄️'],
+    bg: ['#E9E2FF', '#C4B4F5'], banner: 'linear-gradient(140deg,#BC94F7,#8355D8)', sub: '银河尽头的终极谜题' },
+  { name: '极地冰原', emoji: '🐧', deco: ['🐧','❄️','🐻‍❄️','🧊'],
+    bg: ['#E4F6FA', '#BEE8F2'], banner: 'linear-gradient(140deg,#9ADCEC,#54A8BE)', sub: '冰封谜题 · 敬请期待' },
+];
+const LEVELS_PER_CH = 12;
+const unlockStarsNeeded = ci => ci * 15; // 第 ci 章（0起）需累计前章星数
+
+/* ---------- 皮肤 ---------- */
+const SKINS = [
+  { id: 'classic', name: '经典木纹', desc: '温暖的原木棋盘', price: 0, frame: '#8A5A2B',
+    cell: '#F7E7C5', cellAlt: '#EFDAAD', given: '#5B4030', user: '#2F7FC0', hi: '#FFE9A8', peer: 'rgba(230,170,60,.25)' },
+  { id: 'candy', name: '糖果亮彩', desc: '草莓牛奶配色', price: 300, frame: '#D86A9B',
+    cell: '#FFF0F6', cellAlt: '#FFDEEC', given: '#B0446E', user: '#E060A0', hi: '#FFD3E6', peer: 'rgba(255,150,190,.25)' },
+  { id: 'ocean', name: '深海蓝调', desc: '沉静的深海之心', price: 450, frame: '#2C5F8A',
+    cell: '#E3F2FB', cellAlt: '#C9E4F5', given: '#1B4965', user: '#2F7FC0', hi: '#BEE3F8', peer: 'rgba(80,160,220,.22)' },
+  { id: 'neon', name: '暗夜霓虹', desc: '赛博朋克之夜', price: 600, frame: '#1D1D2E',
+    cell: '#26263B', cellAlt: '#2E2E48', given: '#7CF2C8', user: '#FF7FD4', hi: '#3A3A66', peer: 'rgba(124,242,200,.12)' },
+  { id: 'sakura', name: '樱花物语', desc: '春日限定的浪漫', price: 800, frame: '#C97A9E',
+    cell: '#FFF5F8', cellAlt: '#FFE8EF', given: '#9E4A6E', user: '#D4699E', hi: '#FFDCE8', peer: 'rgba(212,105,158,.2)' },
+  { id: 'gold', name: '黄金典藏', desc: '尊贵闪耀的荣耀', price: 1000, frame: '#B8860B',
+    cell: '#FFF8E0', cellAlt: '#FBEDBB', given: '#8A6200', user: '#C99200', hi: '#FFE9A0', peer: 'rgba(200,150,30,.22)' },
+];
+const skinOf = id => SKINS.find(s => s.id === id) || SKINS[0];
+
+/* ---------- 成就 ---------- */
+const ACHV_DEF = [
+  { id: 'first_win',  icon: '🎯', name: '初出茅庐',   desc: '完成第 1 个关卡',            target: 1 },
+  { id: 'ten_win',    icon: '🧩', name: '解谜新秀',   desc: '累计完成 10 个关卡',          target: 10 },
+  { id: 'stars_30',   icon: '🌟', name: '星光璀璨',   desc: '累计获得 30 颗星星',          target: 30 },
+  { id: 'sudoku_5',   icon: '🔢', name: '数独行家',   desc: '通过 5 个数独关卡',           target: 5 },
+  { id: 'mine_3',     icon: '💣', name: '扫雷勇者',   desc: '通过 3 个扫雷关卡',           target: 3 },
+  { id: 'ch_daily',   icon: '⚡', name: '挑战者',     desc: '完成 1 个每日挑战',           target: 1 },
+  { id: 'collector',  icon: '🎁', name: '收藏家',     desc: '拥有 2 款棋盘皮肤',           target: 2 },
+  { id: 'days_7',     icon: '🗓️', name: '坚持不懈',   desc: '累计游玩 7 天（原型预置 1 天）', target: 7 },
+];
+
+/* ---------- 全局状态（原型存 localStorage） ---------- */
+const DEFAULT_STATE = {
+  coins: 500,
+  skin: 'classic',
+  owned: ['classic'],
+  progress: {},          // "ci-li" -> stars
+  curChapter: 0,
+  achv: { days_7: 1 },   // 预置游玩天数
+  achvUnlocked: [],
+  challenge: {},         // game -> { daily:{done,best}, weekly:..., monthly:... }
+  playDays: 1,
+};
+let S = loadState();
+function loadState() {
+  try { const raw = localStorage.getItem('puzzlestar_v1'); if (raw) return { ...DEFAULT_STATE, ...JSON.parse(raw) }; } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+}
+function saveState() { try { localStorage.setItem('puzzlestar_v1', JSON.stringify(S)); } catch (e) {} }
+
+const totalStars = () => Object.values(S.progress).reduce((a, b) => a + b, 0);
+const chStars = ci => { let n = 0; for (let i = 0; i < LEVELS_PER_CH; i++) n += (S.progress[ci + '-' + i] || 0); return n; };
+const chUnlocked = ci => ci === 0 || totalStars() >= unlockStarsNeeded(ci);
+const firstUnfinished = ci => { for (let i = 0; i < LEVELS_PER_CH; i++) if (!(ci + '-' + i in S.progress)) return i; return LEVELS_PER_CH - 1; };
+
+/* ---------- 屏幕栈 ---------- */
+let screenStack = ['scr-home'];
+function go(id, push = true) {
+  if (!push) screenStack = [id]; else screenStack.push(id);
+  $$('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  if (id === 'scr-chapters') renderChapters();
+  if (id === 'scr-challenge') renderChallenge();
+  if (id === 'scr-achv') renderAchv();
+  if (id === 'scr-shop') renderShop();
+  refreshCoins();
+}
+function back() {
+  screenStack.pop();
+  const top = screenStack[screenStack.length - 1] || 'scr-home';
+  $$('.screen').forEach(s => s.classList.toggle('active', s.id === top));
+  if (top === 'scr-home') refreshCoins();
+  if (Game.timer) { clearInterval(Game.timer); Game.timer = null; }
+}
+$$('[data-back]').forEach(b => b.addEventListener('click', back));
+
+/* ---------- 金币 ---------- */
+let lastCoins = S.coins;
+function refreshCoins(animate = false) {
+  ['coin-home', 'coin-ch', 'coin-achv', 'coin-shop'].forEach(id => {
+    const n = document.getElementById(id); if (!n) return;
+    n.textContent = S.coins;
+    if (animate && S.coins !== lastCoins) { n.classList.remove('bump'); void n.offsetWidth; n.classList.add('bump'); }
+  });
+  lastCoins = S.coins;
+}
+function addCoins(n) { S.coins += n; saveState(); refreshCoins(true); }
+
+/* ---------- Toast ---------- */
+function toast(msg) {
+  const t = el('div', 'toast', msg);
+  $('#toast-root').appendChild(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 350); }, 1800);
+}
+
+/* ---------- 弹窗（支持排队，避免成就弹窗顶掉结算弹窗） ---------- */
+const modalQueue = [];
+function openModal(html, opts = {}) {
+  const root = $('#modal-root');
+  root.innerHTML = `<div class="modal-mask"></div><div class="modal-box">${html}</div>`;
+  root.classList.add('show');
+  if (opts.maskClose !== false) root.querySelector('.modal-mask').addEventListener('click', () => closeModal());
+  return root.querySelector('.modal-box');
+}
+function queueModal(builder) {
+  if ($('#modal-root').classList.contains('show')) modalQueue.push(builder);
+  else builder();
+}
+function closeModal() {
+  const r = $('#modal-root'); r.classList.remove('show'); r.innerHTML = '';
+  if (modalQueue.length) { const b = modalQueue.shift(); setTimeout(b, 380); }
+}
+
+/* ---------- 彩带粒子 ---------- */
+const fx = $('#fx'), fctx = fx.getContext('2d');
+let fxParts = [], fxRun = false;
+function sizeFx() { fx.width = fx.clientWidth; fx.height = fx.clientHeight; }
+window.addEventListener('resize', sizeFx); sizeFx();
+function confetti(n = 120) {
+  const colors = ['#FF7FB2', '#FFC93C', '#72CC55', '#57ABEF', '#A06FF2', '#FF8A5C'];
+  for (let i = 0; i < n; i++) {
+    fxParts.push({
+      x: Math.random() * fx.width, y: -20 - Math.random() * fx.height * .4,
+      w: 6 + Math.random() * 7, h: 8 + Math.random() * 8,
+      vx: (Math.random() - .5) * 2.4, vy: 2.2 + Math.random() * 3,
+      rot: Math.random() * Math.PI, vr: (Math.random() - .5) * .25,
+      c: colors[i % colors.length], life: 240 + Math.random() * 100,
+    });
+  }
+  if (!fxRun) { fxRun = true; requestAnimationFrame(fxTick); }
+}
+function fxTick() {
+  fctx.clearRect(0, 0, fx.width, fx.height);
+  fxParts = fxParts.filter(p => p.life-- > 0 && p.y < fx.height + 30);
+  for (const p of fxParts) {
+    p.x += p.vx; p.y += p.vy; p.vy += .035; p.rot += p.vr;
+    fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.rot);
+    fctx.fillStyle = p.c; fctx.globalAlpha = Math.min(1, p.life / 60);
+    fctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); fctx.restore();
+  }
+  if (fxParts.length) requestAnimationFrame(fxTick); else { fxRun = false; fctx.clearRect(0, 0, fx.width, fx.height); }
+}
+
+/* ================= 主界面 ================= */
+$('#btn-play').addEventListener('click', () => { S.curChapter = highestOpenChapter(); saveState(); go('scr-chapters'); });
+$('#btn-challenge').addEventListener('click', () => go('scr-challenge'));
+$('#btn-achv').addEventListener('click', () => go('scr-achv'));
+$('#btn-shop').addEventListener('click', () => go('scr-shop'));
+$('#btn-settings').addEventListener('click', openSettings);
+
+function highestOpenChapter() {
+  let ci = 0;
+  for (let i = 0; i < CHAPTERS.length; i++) if (chUnlocked(i)) ci = i;
+  return ci;
+}
+
+function openSettings() {
+  const box = openModal(`
+    <div class="modal-title">⚙️ 设置</div>
+    <div class="set-row"><span>🎵 背景音乐</span><button class="toggle on" data-t="music"></button></div>
+    <div class="set-row"><span>🔊 游戏音效</span><button class="toggle on" data-t="sound"></button></div>
+    <div class="set-row"><span>📳 打击震动</span><button class="toggle on" data-t="vib"></button></div>
+    <div class="modal-btns">
+      <button class="btn-candy btn-ghost" id="btn-reset-save">🗑 重置存档</button>
+      <button class="btn-candy btn-green" id="btn-close-set">好的</button>
+    </div>
+    <div style="font-size:10px;color:var(--ink-soft)">HTML 原型 · 正式版将接入 Cocos Creator 音频系统</div>
+  `);
+  box.querySelectorAll('.toggle').forEach(t => t.addEventListener('click', () => t.classList.toggle('on')));
+  box.querySelector('#btn-close-set').addEventListener('click', closeModal);
+  box.querySelector('#btn-reset-save').addEventListener('click', () => {
+    localStorage.removeItem('puzzlestar_v1'); S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    lastCoins = S.coins; closeModal(); refreshCoins(); toast('存档已重置 ✨');
+  });
+}
+
+/* 倒计时（每日挑战） */
+function countdownToMidnight() {
+  const now = new Date(), end = new Date(now); end.setHours(24, 0, 0, 0);
+  let s = Math.floor((end - now) / 1000);
+  return pad2(Math.floor(s / 3600)) + ':' + pad2(Math.floor(s / 60) % 60) + ':' + pad2(s % 60);
+}
+setInterval(() => { const h = $('#home-countdown'); if (h) h.textContent = countdownToMidnight(); }, 1000);
+
+/* ================= 章节地图 ================= */
+let mapChapter = 0;
+
+function renderChapters() {
+  mapChapter = S.curChapter;
+  drawChapter();
+}
+function drawChapter() {
+  const app = $('#app'), ch = CHAPTERS[mapChapter];
+  app.style.setProperty('--bg1', ch.bg[0]); app.style.setProperty('--bg2', ch.bg[1]);
+
+  $('#ch-star-count').textContent = totalStars();
+  $('#ch-prev').classList.toggle('dim', mapChapter === 0);
+  $('#ch-next').classList.toggle('dim', mapChapter === CHAPTERS.length - 1);
+
+  const unlocked = chUnlocked(mapChapter);
+  const need = unlockStarsNeeded(mapChapter);
+  const card = $('#ch-card');
+  card.style.background = ch.banner;
+  card.style.animation = 'none'; void card.offsetWidth; card.style.animation = '';
+  card.innerHTML = unlocked ? `
+    <div class="chapter-emoji">${ch.emoji}</div>
+    <div class="chapter-meta">
+      <div class="chapter-name">第 ${mapChapter + 1} 章 · ${ch.name}</div>
+      <div class="chapter-sub">${ch.sub} · ⭐ ${chStars(mapChapter)}/${LEVELS_PER_CH * 3}</div>
+    </div>
+    <div style="font-size:26px;opacity:.85">${Array(3).fill('⭐').join('')}</div>
+  ` : `
+    <div class="chapter-emoji" style="filter:grayscale(.6)">🔒</div>
+    <div class="chapter-meta">
+      <div class="chapter-name">第 ${mapChapter + 1} 章 · ${ch.name}</div>
+      <div class="chapter-sub">章节未解锁</div>
+    </div>
+    <div class="chapter-lock-ic">需累计<b>⭐ ${need}</b>当前 ${totalStars()}</div>
+  `;
+  card.onclick = unlocked ? null : () => toast(`再收集 ${need - totalStars()} 颗星星即可解锁`);
+
+  drawMap(unlocked);
+}
+function drawMap(unlocked) {
+  const ch = CHAPTERS[mapChapter];
+  const canvas = $('#map-canvas');
+  const cur = unlocked ? firstUnfinished(mapChapter) : -1;
+  const rows = Math.ceil(LEVELS_PER_CH / 4);
+  const rowH = 108, topPad = 34, botPad = 46;
+  const H = topPad + rows * rowH + botPad;
+  canvas.style.height = H + 'px';
+  canvas.innerHTML = `<svg class="map-path" viewBox="0 0 100 ${H}" preserveAspectRatio="none"></svg>`;
+
+  /* 主题装饰 */
+  ch.deco.forEach((d, i) => {
+    const m = el('div', 'map-deco', d === '金字塔' ? '🏜️' : d);
+    m.style.left = (6 + (i % 2) * 78 + (i > 1 ? 8 : 0)) + '%';
+    m.style.top = (topPad + ((i * rowH * 1.7) % (H - 140))) + 'px';
+    m.style.animationDelay = (i * .9) + 's';
+    canvas.appendChild(m);
+  });
+
+  const xs = [10, 36.7, 63.4, 90];
+  const pos = [];
+  for (let i = 0; i < LEVELS_PER_CH; i++) {
+    const row = Math.floor(i / 4), col = i % 4;
+    const x = xs[row % 2 ? 3 - col : col];
+    const y = topPad + row * rowH + rowH / 2;
+    pos.push([x, y]);
+  }
+  /* 蛇形路径 */
+  const svg = canvas.querySelector('svg');
+  let d = '';
+  pos.forEach(([x, y], i) => {
+    if (i === 0) d = `M ${x} ${y}`;
+    else { const [px, py] = pos[i - 1]; d += ` Q ${(px + x) / 2} ${py + (y - py) * 0.25}, ${x} ${y}`; }
+  });
+  svg.innerHTML = `<path d="${d}" vector-effect="non-scaling-stroke" style="stroke:rgba(255,255,255,${unlocked ? .9 : .4})"/>`;
+
+  pos.forEach(([x, y], i) => {
+    const stars = S.progress[mapChapter + '-' + i] || 0;
+    const isBoss = i === LEVELS_PER_CH - 1;
+    let cls = 'node ';
+    if (!unlocked || (cur >= 0 && i > cur)) cls += 'locked';
+    else if (i < cur || stars > 0) cls += 'done';
+    else cls += 'current';
+    if (isBoss) cls += ' boss';
+
+    const n = el('button', cls);
+    n.style.left = x + '%'; n.style.top = y + 'px';
+    n.style.animationDelay = (i * 0.05) + 's';
+    n.innerHTML = isBoss ? '👑' : `<span class="n-num">${i + 1}</span>` +
+      (cls.includes('locked') ? '' : `<span class="n-stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>`);
+    n.addEventListener('click', () => {
+      if (n.classList.contains('locked')) { toast(cur >= 0 ? '先通过前面的关卡吧～' : '章节未解锁'); return; }
+      openLevelIntro(mapChapter, i);
+    });
+    canvas.appendChild(n);
+  });
+
+  /* 滚到当前节点 */
+  if (cur > 3) requestAnimationFrame(() => {
+    $('#map-scroll').scrollTop = Math.max(0, pos[Math.min(cur, LEVELS_PER_CH - 1)][1] - 260);
+  });
+}
+$('#ch-prev').addEventListener('click', () => { if (mapChapter > 0) { mapChapter--; drawChapter(); } });
+$('#ch-next').addEventListener('click', () => { if (mapChapter < CHAPTERS.length - 1) { mapChapter++; drawChapter(); } });
+
+/* 关卡介绍弹窗 */
+function levelGameOf(ci, li) { return GAME_ORDER[(ci * 7 + li * 3) % GAME_ORDER.length]; }
+function openLevelIntro(ci, li) {
+  const gid = levelGameOf(ci, li), g = GAMES[gid];
+  const diff = ['简单', '普通', '困难'][(ci + Math.floor(li / 4)) % 3];
+  openModal(`
+    <div class="lv-game-ic">${g.icon}</div>
+    <div class="modal-title">${CHAPTERS[ci].name} · 第 ${li + 1} 关</div>
+    <div class="lv-meta-rows">
+      <div class="lv-meta-row"><span>玩法</span><b>${g.icon} ${g.name}</b></div>
+      <div class="lv-meta-row"><span>难度</span><b>${'⭐'.repeat((ci + Math.floor(li / 4)) % 3 + 1)} ${diff}</b></div>
+      <div class="lv-meta-row"><span>通关奖励</span><b>🪙 30 + 星级 ×10</b></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-candy btn-ghost" data-close>返回</button>
+      <button class="btn-candy btn-green" id="btn-start-lv">开 始</button>
+    </div>
+  `).querySelectorAll('button').forEach(b => {
+    if (b.hasAttribute('data-close')) b.addEventListener('click', closeModal);
+  });
+  $('#btn-start-lv').addEventListener('click', () => { closeModal(); startGame({ from: 'level', ci, li, gid }); });
+}
+
+/* ================= 挑战中心 ================= */
+let chTab = 'sudoku';
+function challengeRec(gid) {
+  if (!S.challenge[gid]) S.challenge[gid] = { daily: { done: false, best: null }, weekly: { done: false, best: null }, monthly: { done: false, best: null } };
+  return S.challenge[gid];
+}
+function renderChallenge() {
+  const tabs = $('#game-tabs');
+  tabs.innerHTML = '';
+  GAME_ORDER.forEach(gid => {
+    const g = GAMES[gid];
+    const t = el('button', 'game-tab' + (gid === chTab ? ' on' : ''),
+      `<span class="gt-ic">${g.icon}</span><span class="gt-name">${g.name}</span>`);
+    t.addEventListener('click', () => { chTab = gid; renderChallenge(); });
+    tabs.appendChild(t);
+  });
+
+  const list = $('#challenge-list');
+  list.innerHTML = '';
+  const g = GAMES[chTab];
+  const defs = [
+    { key: 'daily', name: '每日挑战', tag: '今日', icon: '☀️', reward: 80,
+      left: countdownToMidnight(), label: '刷新' },
+    (() => { const now = new Date(); const day = (7 - now.getDay()) % 7 || 7; const end = new Date(now); end.setDate(now.getDate() + day); end.setHours(24, 0, 0, 0); let s = Math.floor((end - now) / 1000);
+      return { key: 'weekly', name: '每周挑战', tag: '本周', icon: '🗓️', reward: 300, left: pad2(Math.floor(s / 86400)) + '天 ' + pad2(Math.floor(s / 3600) % 24) + ':' + pad2(Math.floor(s / 60) % 60), label: '刷新' }; })(),
+    (() => { const now = new Date(); const end = new Date(now.getFullYear(), now.getMonth() + 1, 1); let s = Math.floor((end - now) / 1000);
+      return { key: 'monthly', name: '每月挑战', tag: '本月', icon: '🌙', reward: 1200, left: pad2(Math.floor(s / 86400)) + '天 ' + pad2(Math.floor(s / 3600) % 24) + '小时', label: '刷新' }; })(),
+  ];
+  defs.forEach(d => {
+    const rec = challengeRec(chTab)[d.key];
+    const card = el('div', `ch-card ch-${d.key}` + (rec.done ? ' done-card' : ''));
+    card.innerHTML = `
+      <div class="ch-ic">${d.icon}</div>
+      <div class="ch-info">
+        <div class="ch-name">${d.name} ${g.icon}<span class="ch-tag">${d.tag} · ${g.name}</span></div>
+        <div class="ch-count">⏳ 距${d.label} ${d.left}</div>
+        <div class="ch-best">${rec.best ? '🏅 最佳记录 ' + rec.best : '🏟 尚无挑战记录'}</div>
+      </div>
+      ${rec.done ? '<div class="ch-stamp">已完成</div>' : ''}
+      <button class="ch-go">${rec.done ? '重 玩' : '挑 战'}</button>
+    `;
+    card.querySelector('.ch-go').addEventListener('click', () =>
+      startGame({ from: 'challenge', challengeKey: d.key, gid: chTab }));
+    list.appendChild(card);
+  });
+}
+
+/* ================= 成就 ================= */
+function achvProgress(id) {
+  switch (id) {
+    case 'first_win': return Math.min(1, levelClearCount());
+    case 'ten_win':   return Math.min(10, levelClearCount());
+    case 'stars_30':  return Math.min(30, totalStars());
+    case 'sudoku_5':  return Math.min(5, gameClearCount('sudoku'));
+    case 'mine_3':    return Math.min(3, gameClearCount('mine'));
+    case 'ch_daily':  return Object.values(S.challenge).some(r => r.daily.done) ? 1 : 0;
+    case 'collector': return Math.min(2, S.owned.length);
+    case 'days_7':    return Math.min(7, S.playDays || 1);
+  }
+  return 0;
+}
+function levelClearCount() { return Object.keys(S.progress).length; }
+function gameClearCount(gid) {
+  let n = 0;
+  for (let ci = 0; ci < CHAPTERS.length; ci++) for (let li = 0; li < LEVELS_PER_CH; li++)
+    if (levelGameOf(ci, li) === gid && (ci + '-' + li) in S.progress) n++;
+  return n;
+}
+function checkAchievements() {
+  const newly = [];
+  ACHV_DEF.forEach(a => {
+    if (!S.achvUnlocked.includes(a.id) && achvProgress(a.id) >= a.target) {
+      S.achvUnlocked.push(a.id); newly.push(a);
+    }
+  });
+  if (newly.length) {
+    saveState();
+    newly.forEach(a => queueModal(() => {
+      confetti(70);
+      openModal(`
+        <div class="lv-game-ic">${a.icon}</div>
+        <div class="modal-title">成就解锁！</div>
+        <div class="modal-sub"><b>${a.name}</b><br>${a.desc}</div>
+        <div class="res-coin">🪙 +100</div>
+        <div class="modal-btns"><button class="btn-candy btn-gold" data-close>太棒了</button></div>
+      `).querySelector('[data-close]').addEventListener('click', closeModal);
+      addCoins(100);
+    }));
+  }
+}
+function renderAchv() {
+  const unlocked = S.achvUnlocked.length, total = ACHV_DEF.length;
+  const C = 2 * Math.PI * 31;
+  $('#achv-ring-bar').style.strokeDashoffset = C * (1 - unlocked / total);
+  $('#achv-ring-num').textContent = unlocked + '/' + total;
+  $('#achv-hero-sub').textContent = unlocked === total ? '全成就达成！你就是谜题之神！🌟' : '完成成就收集星星，点亮你的荣誉之路';
+
+  const list = $('#achv-list');
+  list.innerHTML = '';
+  ACHV_DEF.forEach(a => {
+    const cur = achvProgress(a.id), isUn = S.achvUnlocked.includes(a.id);
+    const item = el('div', 'achv-item' + (isUn ? ' unlocked' : ''));
+    item.innerHTML = `
+      <div class="achv-ic">${a.icon}</div>
+      <div class="achv-info">
+        <div class="achv-name">${a.name}</div>
+        <div class="achv-desc">${a.desc}</div>
+        <div class="achv-bar"><i style="width:${Math.min(100, cur / a.target * 100)}%"></i></div>
+        <div class="achv-count">${isUn ? '已解锁' : '进度'} ${cur}/${a.target}</div>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+/* ================= 商城 ================= */
+function renderShop() {
+  const grid = $('#shop-grid');
+  grid.innerHTML = '';
+  SKINS.forEach(sk => {
+    const owned = S.owned.includes(sk.id), using = S.skin === sk.id;
+    const card = el('div', 'skin-card');
+    /* 迷你棋盘预览 */
+    let cells = '';
+    for (let i = 0; i < 36; i++) {
+      const r = Math.floor(i / 6), c = i % 6;
+      const alt = (Math.floor(r / 2) + Math.floor(c / 2)) % 2;
+      const demo = [2, 9, 16, 22, 27, 31].includes(i);
+      cells += `<div class="skin-cell" style="background:${alt ? sk.cellAlt : sk.cell};
+        ${demo ? `color:${sk.user};` : ''};display:grid;place-items:center;font-weight:800;font-size:10px">${demo ? [4, 1, 7, 3, 6, 2][[2, 9, 16, 22, 27, 31].indexOf(i)] : ''}</div>`;
+    }
+    card.innerHTML = `
+      ${using ? '<div class="skin-eq-mark">使用中 ✓</div>' : ''}
+      <div class="skin-preview" style="border-color:${sk.frame};background:${sk.frame}">${cells}</div>
+      <div class="skin-name">${sk.name}</div>
+      <div class="skin-desc">${sk.desc}</div>
+      <button class="skin-act ${using ? 'using-btn' : owned ? 'use-btn' : 'locked-btn'}">
+        ${using ? '默认装备' : owned ? '装 备' : '🪙 ' + sk.price}
+      </button>
+    `;
+    card.querySelector('.skin-act').addEventListener('click', () => {
+      if (using) return;
+      if (owned) { S.skin = sk.id; saveState(); renderShop(); toast(`已装备「${sk.name}」🎯`); checkAchievements(); return; }
+      if (S.coins < sk.price) { toast('金币不足，去闯关赚金币吧！💪'); return; }
+      const box = openModal(`
+        <div class="lv-game-ic">🛍️</div>
+        <div class="modal-title">购买皮肤</div>
+        <div class="modal-sub">确认花费 <b style="color:var(--gold-d)">🪙 ${sk.price}</b> 购买<br><b>「${sk.name}」</b>吗？</div>
+        <div class="modal-btns">
+          <button class="btn-candy btn-ghost" data-close>再想想</button>
+          <button class="btn-candy btn-pink" id="btn-buy-yes">买！</button>
+        </div>`);
+      box.querySelector('[data-close]').addEventListener('click', closeModal);
+      box.querySelector('#btn-buy-yes').addEventListener('click', () => {
+        closeModal(); addCoins(-sk.price);
+        S.owned.push(sk.id); S.skin = sk.id; saveState();
+        confetti(90); renderShop(); toast(`获得新皮肤「${sk.name}」！🎉`);
+        checkAchievements();
+      });
+    });
+    grid.appendChild(card);
+  });
+}
+
+/* ================= 玩法界面 ================= */
+const Game = { ctx: null, timer: null, sec: 0, err: 0, hints: 3 };
+
+function startGame(ctx) {
+  Game.ctx = ctx; Game.sec = 0; Game.err = 0; Game.hints = 3;
+  const g = GAMES[ctx.gid];
+  $('#lv-game').textContent = g.icon + ' ' + g.name;
+  $('#lv-name').textContent = ctx.from === 'level'
+    ? `${CHAPTERS[ctx.ci].name} · 第 ${ctx.li + 1} 关`
+    : `${g.name} · 挑战模式`;
+  $('#game-timer').textContent = '⏱ 00:00';
+
+  go('scr-game');
+  const area = $('#board-area'), toolbar = $('#board-toolbar'), demoRow = $('#demo-btn-row');
+  toolbar.innerHTML = ''; demoRow.style.display = 'none'; demoRow.innerHTML = '';
+
+  if (Game.timer) clearInterval(Game.timer);
+  Game.timer = setInterval(() => {
+    Game.sec++;
+    $('#game-timer').textContent = '⏱ ' + fmtTime(Game.sec);
+  }, 1000);
+
+  if (ctx.gid === 'sudoku') initSudoku(ctx, area, toolbar);
+  else if (ctx.gid === 'mine') initMine(ctx, area, toolbar);
+  else initStaticBoard(ctx.gid, area, demoRow);
+}
+
+/* 暂停 */
+$('#btn-pause').addEventListener('click', () => {
+  const box = openModal(`
+    <div class="modal-title">⏸ 游戏暂停</div>
+    <div class="modal-sub">休息一下，谜题不会跑掉～</div>
+    <div class="modal-btns">
+      <button class="btn-candy btn-ghost" id="btn-quit-lv">退出</button>
+      <button class="btn-candy btn-blue" id="btn-restart">重来</button>
+      <button class="btn-candy btn-green" id="btn-resume">继续</button>
+    </div>`);
+  box.querySelector('#btn-resume').addEventListener('click', closeModal);
+  box.querySelector('#btn-restart').addEventListener('click', () => { closeModal(); startGame(Game.ctx); });
+  box.querySelector('#btn-quit-lv').addEventListener('click', () => { closeModal(); if (Game.timer) clearInterval(Game.timer); back(); });
+});
+
+/* ---------- 数独 ---------- */
+const SUDOKU_SOLUTION = [
+  5,3,4,6,7,8,9,1,2, 6,7,2,1,9,5,3,4,8, 1,9,8,3,4,2,5,6,7,
+  8,5,9,7,6,1,4,2,3, 4,2,6,8,5,3,7,9,1, 7,1,3,9,2,4,8,5,6,
+  9,6,1,5,3,7,2,8,4, 2,8,7,4,1,9,6,3,5, 3,4,5,2,8,6,1,7,9,
+];
+function makeSudokuPuzzle(seed) {
+  const rng = mulberry32(seed * 7919 + 13);
+  const p = SUDOKU_SOLUTION.slice();
+  const holes = 38 + Math.floor(rng() * 10);
+  const idx = [...Array(81).keys()];
+  for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+  for (let i = 0; i < holes; i++) p[idx[i]] = 0;
+  return p;
+}
+function initSudoku(ctx, area, toolbar) {
+  const sk = skinOf(S.skin);
+  const seed = ctx.from === 'level' ? ctx.ci * 100 + ctx.li : Date.now() % 9999;
+  const puzzle = makeSudokuPuzzle(seed);
+  const state = {
+    puzzle, sel: -1,
+    counts: {}, notes: false,
+  };
+  SUDOKU_SOLUTION.forEach((v, i) => { if (puzzle[i]) state.counts[v] = (state.counts[v] || 0) + 1; });
+
+  const frame = el('div', 'board-frame');
+  frame.style.setProperty('--sk-frame', sk.frame);
+  const grid = el('div', 'sudoku-grid');
+  frame.appendChild(grid); area.innerHTML = ''; area.appendChild(frame);
+
+  const cells = [];
+  for (let i = 0; i < 81; i++) {
+    const c = el('div', 's-cell' + (puzzle[i] ? ' given' : ''));
+    const r = Math.floor(i / 9), col = i % 9;
+    if (((Math.floor(r / 3) + Math.floor(col / 3)) % 2)) c.classList.add('alt');
+    if (puzzle[i]) c.textContent = puzzle[i];
+    c.addEventListener('click', () => { if (!puzzle[i]) { state.sel = i; paint(); } });
+    cells.push(c); grid.appendChild(c);
+  }
+
+  function paint() {
+    const selVal = state.sel >= 0 ? (cells[state.sel].textContent || '') : '';
+    cells.forEach((c, i) => {
+      c.classList.toggle('sel', i === state.sel);
+      const r = Math.floor(state.sel / 9), col = state.sel % 9;
+      const pr = Math.floor(i / 9), pc = i % 9;
+      c.classList.toggle('peer', state.sel >= 0 && i !== state.sel &&
+        (pr === r || pc === col || (Math.floor(pr / 3) === Math.floor(r / 3) && Math.floor(pc / 3) === Math.floor(col / 3))));
+      c.classList.toggle('same', !!selVal && i !== state.sel && c.textContent === selVal && !c.classList.contains('err'));
+    });
+    /* 数字剩余计数 */
+    toolbar.querySelectorAll('.num-key').forEach((k, ki) => {
+      const used = state.counts[ki + 1] || 0;
+      k.classList.toggle('used', used >= 9);
+      k.querySelector('span').textContent = '剩 ' + (9 - used);
+    });
+  }
+
+  function fill(v) {
+    if (state.sel < 0) { toast('先选择一个空格子'); return; }
+    const i = state.sel;
+    if (SUDOKU_SOLUTION[i] === v) {
+      cells[i].textContent = v; cells[i].className = cells[i].className.replace(/ ?(user|err)/g, '') + ' user';
+      cells[i].classList.remove('err');
+      state.counts[v] = (state.counts[v] || 0) + 1;
+      state.sel = -1; paint();
+      if (cells.every((c, ci) => c.textContent == SUDOKU_SOLUTION[ci])) winSudoku();
+    } else {
+      cells[i].textContent = v;
+      cells[i].classList.remove('user'); cells[i].classList.add('err');
+      Game.err++;
+      cells[i].addEventListener('animationend', () => { if (cells[i].classList.contains('err')) { cells[i].textContent = ''; cells[i].classList.remove('err'); paint(); } }, { once: true });
+    }
+  }
+  function winSudoku() {
+    if (Game.timer) clearInterval(Game.timer);
+    const stars = Game.err === 0 ? 3 : Game.err <= 2 ? 2 : 1;
+    finishGame(stars);
+  }
+
+  /* 工具栏 */
+  toolbar.innerHTML = `
+    <div class="num-pad">${Array.from({ length: 9 }, (_, i) =>
+      `<button class="num-key" data-v="${i + 1}"><b>${i + 1}</b><span>剩 9</span></button>`).join('')}
+    </div>
+    <div class="tool-row">
+      <button class="tool-btn" id="tk-hint"><span class="tb-ic">💡</span>提示 ×3</button>
+      <button class="tool-btn" id="tk-erase"><span class="tb-ic">🧽</span>擦除</button>
+      <button class="tool-btn off" id="tk-note"><span class="tb-ic">✏️</span>笔记(敬请期待)</button>
+    </div>`;
+  toolbar.querySelectorAll('.num-key').forEach(k =>
+    k.addEventListener('click', () => fill(+k.dataset.v)));
+  toolbar.querySelector('#tk-erase').addEventListener('click', () => {
+    if (state.sel < 0) return;
+    const c = cells[state.sel];
+    if (c.classList.contains('err')) { state.counts[+c.textContent] = Math.max(0, (state.counts[+c.textContent] || 1) - 1); }
+    if (!puzzle[state.sel] && c.textContent && !c.classList.contains('err') && c.classList.contains('user')) {
+      state.counts[+c.textContent] = Math.max(0, (state.counts[+c.textContent] || 1) - 1);
+    }
+    if (!puzzle[state.sel]) { c.textContent = ''; c.classList.remove('user', 'err'); paint(); }
+  });
+  toolbar.querySelector('#tk-hint').addEventListener('click', () => {
+    if (Game.hints <= 0) { toast('提示已用完，相信自己！💪'); return; }
+    const empties = cells.map((c, i) => (!c.textContent || c.classList.contains('err')) && !puzzle[i] ? i : -1).filter(i => i >= 0);
+    if (!empties.length) return;
+    const i = empties[Math.floor(Math.random() * empties.length)];
+    Game.hints--;
+    toolbar.querySelector('#tk-hint').innerHTML = `<span class="tb-ic">💡</span>提示 ×${Game.hints}`;
+    const v = SUDOKU_SOLUTION[i];
+    cells[i].textContent = v; cells[i].classList.remove('err'); cells[i].classList.add('user');
+    state.counts[v] = (state.counts[v] || 0) + 1;
+    state.sel = -1; paint();
+    if (cells.every((c, ci) => c.textContent == SUDOKU_SOLUTION[ci])) winSudoku();
+  });
+  paint();
+}
+
+/* ---------- 扫雷 ---------- */
+function initMine(ctx, area, toolbar) {
+  const sk = skinOf(S.skin);
+  const N = 9, MINES = 10;
+  const st = { mines: null, open: [], flag: [], flagMode: false, over: false, first: true };
+
+  const frame = el('div', 'board-frame');
+  frame.style.setProperty('--sk-frame', sk.frame);
+  const grid = el('div', 'mine-grid');
+  frame.appendChild(grid); area.innerHTML = ''; area.appendChild(frame);
+  const cells = [];
+  for (let i = 0; i < N * N; i++) {
+    const c = el('div', 'm-cell');
+    c.addEventListener('click', () => tap(i));
+    cells.push(c); grid.appendChild(c);
+  }
+
+  function genMines(safe) {
+    const m = new Set();
+    const sr = Math.floor(safe / N), sc = safe % N;
+    while (m.size < MINES) {
+      const i = Math.floor(Math.random() * N * N);
+      const r = Math.floor(i / N), c2 = i % N;
+      if (Math.abs(r - sr) <= 1 && Math.abs(c2 - sc) <= 1) continue;
+      m.add(i);
+    }
+    return m;
+  }
+  function around(i, fn) {
+    const r = Math.floor(i / N), c = i % N;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N) fn(nr * N + nc);
+    }
+  }
+  function count(i) { let n = 0; around(i, j => { if (st.mines.has(j)) n++; }); return n; }
+
+  function tap(i) {
+    if (st.over) return;
+    if (st.flagMode) { toggleFlag(i); return; }
+    if (st.flag[i]) return;
+    if (st.first) { st.mines = genMines(i); st.first = false; }
+    if (st.mines.has(i)) { boom(i); return; }
+    openCell(i);
+  }
+  function openCell(i) {
+    if (st.open[i]) return;
+    st.open[i] = true;
+    const n = count(i);
+    cells[i].classList.add('open');
+    if (n) { cells[i].textContent = n; cells[i].classList.add('n' + n); }
+    else around(i, j => { if (!st.open[j] && !st.flag[j]) openCell(j); });
+    checkWin();
+  }
+  function toggleFlag(i) {
+    if (st.open[i]) return;
+    st.flag[i] = !st.flag[i];
+    cells[i].classList.toggle('flag', st.flag[i]);
+    cells[i].textContent = st.flag[i] ? '🚩' : '';
+  }
+  function boom(i) {
+    st.over = true;
+    if (Game.timer) clearInterval(Game.timer);
+    cells[i].classList.add('boom'); cells[i].textContent = '💥';
+    st.mines.forEach(j => { if (j !== i && !st.flag[j]) { cells[j].classList.add('open'); cells[j].textContent = '💣'; cells[j].style.fontSize = '14px'; } });
+    cells.forEach((c, j) => { if (st.flag[j] && !st.mines.has(j)) c.classList.add('wrong-flag'); });
+    setTimeout(() => openModal(`
+      <div class="res-lose-ic">💥</div>
+      <div class="modal-title">踩到雷啦！</div>
+      <div class="modal-sub">没关系，再试一次一定能行！</div>
+      <div class="modal-btns">
+        <button class="btn-candy btn-ghost" id="btn-mine-quit">退出</button>
+        <button class="btn-candy btn-green" id="btn-mine-retry">再来一次</button>
+      </div>`).querySelectorAll('button').forEach(b =>
+        b.addEventListener('click', () => { closeModal(); b.id === 'btn-mine-retry' ? startGame(Game.ctx) : back(); })), 700);
+  }
+  function checkWin() {
+    const opened = st.open.filter(Boolean).length;
+    if (opened === N * N - MINES) {
+      st.over = true;
+      if (Game.timer) clearInterval(Game.timer);
+      const stars = Game.sec <= 60 ? 3 : Game.sec <= 150 ? 2 : 1;
+      cells.forEach((c, j) => { if (st.mines.has(j)) { c.textContent = '🚩'; c.classList.add('flag'); c.style.fontSize = '14px'; } });
+      setTimeout(() => finishGame(stars), 500);
+    }
+  }
+
+  toolbar.innerHTML = `
+    <div class="tool-row">
+      <button class="tool-btn" id="tk-mode"><span class="tb-ic">⛏️</span>挖掘模式</button>
+      <button class="tool-btn" id="tk-flag2"><span class="tb-ic">🚩</span>剩余旗 ×${MINES}</button>
+      <button class="tool-btn off"><span class="tb-ic">✨</span>道具(敬请期待)</button>
+    </div>`;
+  toolbar.querySelector('#tk-mode').addEventListener('click', () => {
+    st.flagMode = false;
+    toolbar.querySelector('#tk-mode').classList.remove('armed');
+    toolbar.querySelector('#tk-mode').innerHTML = '<span class="tb-ic">⛏️</span>挖掘模式';
+    toolbar.querySelector('#tk-flag2').classList.remove('armed');
+  });
+  toolbar.querySelector('#tk-flag2').addEventListener('click', () => {
+    st.flagMode = true;
+    toolbar.querySelector('#tk-flag2').classList.add('armed');
+    toolbar.querySelector('#tk-mode').classList.add('armed');
+    toolbar.querySelector('#tk-mode').innerHTML = '<span class="tb-ic">⛏️</span>切换挖掘';
+  });
+}
+
+/* ---------- 静态玩法棋盘（数方 / 星之战 / 杀手数独） ---------- */
+function initStaticBoard(gid, area, demoRow) {
+  const sk = skinOf(S.skin);
+  const frame = el('div', 'board-frame');
+  frame.style.setProperty('--sk-frame', sk.frame);
+  const label = { shikaku: '🎨 原型示意 · 正式版可交互', star: '🎨 原型示意 · 正式版可交互', killer: '🎨 原型示意 · 正式版可交互' }[gid];
+  frame.innerHTML = `<div class="demo-badge">${label}</div>`;
+
+  if (gid === 'shikaku') {
+    const grid = el('div', 'static-grid g10');
+    /* 数方：数字提示 + 已划区域 */
+    const clues = { '0,1': 6, '0,7': 4, '1,4': 2, '2,2': 8, '2,8': 3, '3,6': 5, '4,0': 4, '4,9': 6, '5,3': 2, '6,5': 6, '7,1': 3, '7,8': 8, '8,4': 4, '9,6': 2 };
+    const rectColors = ['rgba(127,199,255,.55)', 'rgba(255,178,120,.55)', 'rgba(178,235,140,.55)', 'rgba(255,150,190,.55)', 'rgba(200,160,255,.55)', 'rgba(255,230,120,.55)', 'rgba(140,230,220,.55)'];
+    const rects = [[0,0,2,3],[0,3,1,2],[1,5,2,2],[0,7,2,2],[2,0,2,2],[3,2,3,2],[4,4,2,4],[3,8,1,2],[5,0,2,2],[6,2,2,1],[4,8,2,2],[6,5,1,3],[7,0,2,2],[6,9,3,1],[7,2,3,2],[7,7,3,3],[5,2,1,3],[9,0,1,4],[9,4,1,2]];
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) {
+      const cell = el('div', 'st-cell');
+      if ((r + c) % 2) cell.style.background = sk.cellAlt;
+      const k = r + ',' + c;
+      if (clues[k]) { cell.textContent = clues[k]; cell.style.fontSize = 'clamp(12px,3.4vw,19px)'; }
+      rects.forEach(([rr, cc, h, w], ri) => {
+        if (r === rr && c === cc) {
+          cell.style.background = rectColors[ri % rectColors.length];
+          cell.style.boxShadow = `0 0 0 2px ${sk.frame}`;
+          if (!clues[k]) { cell.textContent = rectsRi2Size(ri); cell.style.opacity = .9; }
+        }
+      });
+      grid.appendChild(cell);
+    }
+    function rectsRi2Size(ri) { const [r, c, h, w] = rects[ri]; return h * w; }
+    frame.appendChild(grid);
+  } else if (gid === 'star') {
+    /* 星之战 7×7：每行每列每区域 1 星 */
+    const grid = el('div', 'static-grid g7');
+    const zoneColors = ['rgba(140,200,120,.5)', 'rgba(120,180,235,.5)', 'rgba(250,180,120,.5)', 'rgba(230,140,180,.5)', 'rgba(180,150,235,.5)', 'rgba(250,220,120,.5)', 'rgba(120,210,200,.5)'];
+    const zones = [
+      'AABBBCC','AADBBCC','ADDEBBF','GDDEEFF','GGGEFFF','GGHHIIF','HHHIIIF',
+    ];
+    const stars = [2, 10, 16, 23, 29, 38, 45];
+    for (let i = 0; i < 49; i++) {
+      const r = Math.floor(i / 7), c = i % 7;
+      const cell = el('div', 'st-cell');
+      cell.style.background = zoneColors[zones[r][c].charCodeAt(0) - 65];
+      if (stars.includes(i)) { cell.innerHTML = '<span style="font-size:clamp(13px,4vw,21px)">⭐</span>'; }
+      grid.appendChild(cell);
+    }
+    frame.appendChild(grid);
+  } else if (gid === 'killer') {
+    /* 杀手数独：数独棋盘 + 笼子和 */
+    const grid = el('div', 'static-grid g9');
+    const cages = [
+      [0, 0, 3, 15], [0, 3, 1, 8], [0, 4, 2, 12], [0, 6, 3, 21], [1, 0, 2, 17], [1, 2, 2, 5],
+      [1, 4, 3, 14], [2, 0, 2, 9], [2, 2, 2, 13], [3, 0, 3, 19], [3, 3, 2, 10], [3, 5, 2, 16],
+      [4, 0, 2, 7], [4, 2, 3, 24], [4, 5, 1, 6], [4, 6, 2, 11], [5, 0, 1, 4], [5, 1, 2, 18],
+      [5, 3, 3, 23], [5, 8, 2, 14], [6, 0, 3, 20], [6, 3, 2, 8], [6, 5, 2, 17], [7, 0, 2, 12],
+      [7, 2, 3, 22], [7, 6, 3, 6], [8, 0, 2, 15], [8, 4, 3, 19],
+    ];
+    const cageColors = ['rgba(255,220,120,.4)', 'rgba(160,210,250,.4)', 'rgba(255,170,200,.4)', 'rgba(180,235,160,.4)', 'rgba(200,170,250,.4)', 'rgba(250,190,140,.4)'];
+    const fills = new Array(81).fill(-1);
+    const nums = ['5', '', '4', '6', '', '', '', '', '', '', '', '', '', '', '', '3', '', '8', '', '', '', '', '', '', '', '', '', '7', '8', '', '', '', '', '', '4', '', '3', '', '', '', '', '', '', '7', '', '1', '', '', '', '', '', '8', '', '', '', '', '', '7', '', '', '4', '', '', '', '', '3', '', '5', '', '', '', '', '', '', '', '', ''];
+    cages.forEach(([r0, c0, size, sum], ci) => {
+      for (let k = 0; k < size; k++) {
+        const idx = r0 * 9 + c0 + Math.floor(k / 3) * 9 + (k % 3);
+        if (idx < 81 && fills[idx] === -1) fills[idx] = ci;
+      }
+    });
+    for (let i = 0; i < 81; i++) {
+      const cell = el('div', 'st-cell');
+      const r = Math.floor(i / 9), c = i % 9;
+      if (fills[i] >= 0) cell.style.background = cageColors[fills[i] % cageColors.length];
+      if (((Math.floor(r / 3) + Math.floor(c / 3)) % 2)) cell.style.filter = 'brightness(.96)';
+      if (nums[i]) { cell.textContent = nums[i]; }
+      else {
+        const cage = cages[fills[i]];
+        if (cage) cell.innerHTML = `<span class="cage-sum">${cage[3]}</span>`;
+      }
+      grid.appendChild(cell);
+    }
+    frame.appendChild(grid);
+  }
+
+  area.innerHTML = ''; area.appendChild(frame);
+
+  demoRow.style.display = 'flex';
+  demoRow.innerHTML = `
+    <button class="btn-candy btn-ghost" id="demo-back">返回</button>
+    <button class="btn-candy btn-green" id="demo-win">▶ 演示通关结算</button>`;
+  demoRow.querySelector('#demo-back').addEventListener('click', () => { if (Game.timer) clearInterval(Game.timer); back(); });
+  demoRow.querySelector('#demo-win').addEventListener('click', () => {
+    if (Game.timer) clearInterval(Game.timer);
+    finishGame(3);
+  });
+}
+
+/* ---------- 结算 ---------- */
+function finishGame(stars) {
+  const ctx = Game.ctx;
+  confetti(140);
+  let title, reward;
+  if (ctx.from === 'level') {
+    title = '关卡完成！';
+    reward = 30 + stars * 10;
+    const key = ctx.ci + '-' + ctx.li;
+    const prev = S.progress[key] || 0;
+    if (stars > prev) S.progress[key] = stars;
+    S.curChapter = ctx.ci;
+  } else {
+    title = '挑战完成！';
+    reward = { daily: 80, weekly: 300, monthly: 1200 }[ctx.challengeKey] || 80;
+    const rec = challengeRec(ctx.gid)[ctx.challengeKey];
+    rec.done = true;
+    const t = fmtTime(Game.sec);
+    if (!rec.best || t < rec.best) rec.best = t;
+  }
+  saveState();
+
+  const starRow = Array.from({ length: 3 }, (_, i) =>
+    `<span class="res-star ${i < stars ? '' : 'hollow'}" ${i < stars ? '' : ''}>⭐</span>`).join('');
+  const box = openModal(`
+    <div class="modal-title">${title}</div>
+    <div class="res-stars">${starRow}</div>
+    <div class="res-stats"><span>用时 <b>${fmtTime(Game.sec)}</b></span><span>失误 <b>${Game.err}</b></span></div>
+    <div class="res-coin">🪙 +${reward}</div>
+    <div class="modal-btns">
+      <button class="btn-candy btn-ghost" id="res-back">返回</button>
+      ${ctx.from === 'level' && ctx.li < LEVELS_PER_CH - 1 ? '<button class="btn-candy btn-green" id="res-next">下一关 ▶</button>' : '<button class="btn-candy btn-gold" id="res-share">炫耀一下</button>'}
+    </div>
+  `, { maskClose: false });
+
+  box.querySelectorAll('.res-star:not(.hollow)').forEach((s, i) => setTimeout(() => s.classList.add('lit'), 150 + i * 60));
+  addCoins(reward);
+
+  box.querySelector('#res-back').addEventListener('click', () => {
+    closeModal(); back();
+    if (ctx.from === 'level') { go('scr-chapters', false); screenStack = ['scr-chapters']; }
+  });
+  const next = box.querySelector('#res-next');
+  if (next) next.addEventListener('click', () => {
+    closeModal();
+    startGame({ from: 'level', ci: ctx.ci, li: ctx.li + 1, gid: levelGameOf(ctx.ci, ctx.li + 1) });
+  });
+  const share = box.querySelector('#res-share');
+  if (share) share.addEventListener('click', () => {
+    closeModal(); back();
+    if (ctx.from === 'challenge') { go('scr-challenge', false); screenStack = ['scr-challenge']; }
+    toast('🎉 分享功能正式版接入（微信/抖音分享 SDK）');
+  });
+
+  setTimeout(checkAchievements, 1800);
+}
+
+/* ---------- 启动 ---------- */
+refreshCoins();
+$('#home-countdown').textContent = countdownToMidnight();
+</script>
+</body>
+</html>
