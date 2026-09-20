@@ -1,0 +1,11 @@
+[
+    { "id": "su_4_easy",   "type": 4, "difficulty": "简单", "timeCostStar": 60,  "errorCostStar": 1, "holes": 6,  "rewardCoins": 20 },
+    { "id": "su_4_normal", "type": 4, "difficulty": "普通", "timeCostStar": 60,  "errorCostStar": 1, "holes": 9,  "rewardCoins": 25 },
+    { "id": "su_4_hard",   "type": 4, "difficulty": "困难", "timeCostStar": 100, "errorCostStar": 2, "holes": 11, "rewardCoins": 30 },
+    { "id": "su_6_easy",   "type": 6, "difficulty": "简单", "timeCostStar": 60,  "errorCostStar": 2, "holes": 12, "rewardCoins": 30 },
+    { "id": "su_6_normal", "type": 6, "difficulty": "普通", "timeCostStar": 100, "errorCostStar": 3, "holes": 16, "rewardCoins": 40 },
+    { "id": "su_6_hard",   "type": 6, "difficulty": "困难", "timeCostStar": 100, "errorCostStar": 3, "holes": 20, "rewardCoins": 50 },
+    { "id": "su_9_easy",   "type": 9, "difficulty": "简单", "timeCostStar": 100, "errorCostStar": 3, "holes": 36, "rewardCoins": 50 },
+    { "id": "su_9_normal", "type": 9, "difficulty": "普通", "timeCostStar": 200, "errorCostStar": 4, "holes": 42, "rewardCoins": 60 },
+    { "id": "su_9_hard",   "type": 9, "difficulty": "困难", "timeCostStar": 200, "errorCostStar": 6, "holes": 48, "rewardCoins": 80 }
+]

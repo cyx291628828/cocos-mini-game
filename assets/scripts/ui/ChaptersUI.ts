@@ -3,7 +3,8 @@ import { Ui } from '../core/Ui';
 import { C, hex } from '../core/Const';
 import { Router } from '../core/Router';
 import { SAVE, setTimer } from '../core/Save';
-import { CHAPTERS, LEVELS_PER_CH, unlockStarsNeeded, levelGameOf, GAMES, GameCtx } from '../core/Data';
+import { Config } from '../core/Config';
+import { CHAPTERS, LEVELS_PER_CH, unlockStarsNeeded, GAMES, GameCtx } from '../core/Data';
 import { Modal } from './ModalUI';
 
 const ROW_H = 210;
@@ -210,11 +211,13 @@ function drawChapter(bgNode: Node, banner: Node, viewport: Node, content: Node, 
 
 /** 关卡介绍弹窗 */
 function openLevelIntro(ci: number, li: number) {
-    const gid = levelGameOf(ci, li);
+    const lv = Config.getLevel(ci, li);       // 与进入玩法同一数据源（关卡表优先）
+    const gid = lv.game;
     const g = GAMES[gid];
-    const diffIdx = (ci + Math.floor(li / 4)) % 3;
-    const diff = ['简单', '普通', '困难'][diffIdx];
-    const diffStars = '⭐'.repeat(diffIdx + 1);
+    const cfg = gid === 'sudoku' && lv.cfgId ? Config.getSudoku(lv.cfgId) : null;
+    const diffIdx = cfg ? ['简单', '普通', '困难'].indexOf(cfg.difficulty) : (ci + Math.floor(li / 4)) % 3;
+    const diff = ['简单', '普通', '困难'][Math.max(0, diffIdx)];
+    const diffStars = '⭐'.repeat(Math.max(1, Math.max(0, diffIdx) + 1));
     Modal.open(box => {
         const p = Ui.panel(box, 600, 720);
         const icon = Ui.emoji(p, g.icon, 100, 0, 250);
@@ -223,7 +226,7 @@ function openLevelIntro(ci: number, li: number) {
         const rows: Array<[string, string]> = [
             ['玩法', `${g.icon} ${g.name}`],
             ['难度', `${diffStars} ${diff}`],
-            ['通关奖励', '🪙 30 + 星级 ×10'],
+            ['通关奖励', cfg ? `🪙 ${cfg.rewardCoins}` : '🪙 30 + 星级 ×10'],
         ];
         rows.forEach(([k, v], i) => {
             const row = Ui.panel(p, 500, 84, { y: 70 - i * 104, bg: '#FFF7E2', r: 18 });

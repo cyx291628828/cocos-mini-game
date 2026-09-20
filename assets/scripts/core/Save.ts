@@ -1,5 +1,6 @@
 import { sys } from 'cc';
-import { CHAPTERS, LEVELS_PER_CH, levelGameOf, ChKey } from './Data';
+import { CHAPTERS, LEVELS_PER_CH, ChKey } from './Data';
+import { Config } from './Config';
 
 /** 挑战记录 */
 export interface ChRec { done: boolean; best: string | null; }
@@ -67,7 +68,7 @@ export const SAVE = {
         let n = 0;
         for (let ci = 0; ci < CHAPTERS.length; ci++)
             for (let li = 0; li < LEVELS_PER_CH; li++)
-                if (levelGameOf(ci, li) === gid && (ci + '-' + li) in this.data.progress) n++;
+                if (Config.getLevel(ci, li).game === gid && (ci + '-' + li) in this.data.progress) n++;
         return n;
     },
     chRec(gid: string, key: ChKey): ChRec {

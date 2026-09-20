@@ -4,6 +4,7 @@ import {
 import { Ui } from './core/Ui';
 import { Router } from './core/Router';
 import { SAVE } from './core/Save';
+import { Config } from './core/Config';
 import { buildHome } from './ui/HomeUI';
 import { buildChapters } from './ui/ChaptersUI';
 import { buildGame } from './ui/GameUI';
@@ -43,7 +44,7 @@ export class Game extends Component {
         w.left = w.right = w.top = w.bottom = 0;
         w.updateAlignment();
 
-        // ---- 初始化存档 / UI 层 / 路由 ----
+        // ---- 初始化存档 / UI 层 / 路由 / 配置表 ----
         SAVE.load();
         Ui.init(this.node);
         Router.init();
@@ -53,7 +54,10 @@ export class Game extends Component {
         Router.register('challenge', buildChallenge);
         Router.register('achv', buildAchv);
         Router.register('shop', buildShop);
-        Router.go('home');
-        console.log('[Game] 主界面构建完成 ✓');
+        // 配置表（数独表/关卡表）加载完成后再进主界面
+        Config.load(() => {
+            Router.go('home');
+            console.log('[Game] 配置表就绪，主界面构建完成 ✓');
+        });
     }
 }
