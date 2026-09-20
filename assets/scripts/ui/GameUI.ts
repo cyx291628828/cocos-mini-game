@@ -39,7 +39,6 @@ export function buildGame(root: Node, ctx?: GameCtx) {
     Ui.background(root, [C.cream1, C.cream2], null);
 
     const st = { sec: 0, paused: false, sel: -1, finished: false };
-    let timeoutApplied = false;
 
     // 数独状态（failGame/超时回调共享）
     const su = {
@@ -49,8 +48,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         errors: 0,
         stars: 3,
     };
-    // 数独侧注册的"超时扣星"回调（tick 触发）
-    let onTimeoutPenalty: (() => void) | null = null;
+    // 数独侧注册的"计时变化"回调（tick 触发，处理阶梯超时扣星）
+    let onTickStarCheck: (() => void) | null = null;
 
     /* 顶栏 */
     const top = Ui.node(root, W, 110, 0, H / 2 - 85);
@@ -65,15 +64,12 @@ export function buildGame(root: Node, ctx?: GameCtx) {
     const timerPill = Ui.pill(top, 210, 72, { x: W / 2 - 135, bg: C.blue, edge: C.blueD });
     const timerLb = Ui.label(timerPill, '⏱ 00:00', { size: 28, color: '#FFFFFF', y: 3 });
 
-    /* 计时（数独：超时扣星在此判定） */
+    /* 计时（数独：阶梯超时扣星在此判定） */
     setTimer(() => {
         if (st.paused || st.finished) return;
         st.sec++;
         timerLb.string = '⏱ ' + fmtTime(st.sec);
-        if (cfg && !timeoutApplied && st.sec > cfg.timeCostStar) {
-            timeoutApplied = true;
-            if (onTimeoutPenalty) onTimeoutPenalty();
-        }
+        if (cfg && onTickStarCheck) onTickStarCheck();
     }, 1000, true);
 
     /* 棋盘 */
@@ -148,24 +144,29 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         su.board = sol.map((v, i) => holesSet.has(i) ? 0 : v);
         su.given = [...Array(N * N)].map((_, i) => !holesSet.has(i));
 
-        /* 星行（棋盘上方）：超时/错误扣星实时变暗 */
-        const starRow = Ui.node(root, 280, 52, 0, boardY + boardSize / 2 + 52);
+        /* 星行（棋盘上方）：阶梯扣星实时变暗 */
+        const starRow = Ui.node(root, 300, 52, 0, boardY + boardSize / 2 + 52);
         const starNodes: Node[] = [];
-        for (let i = 0; i < 3; i++) starNodes.push(Ui.emoji(starRow, '⭐', 44, (i - 1) * 60, 0));
-        const errLb = Ui.label(starRow, '', { size: 22, color: C.redD, x: 160 });
+        for (let i = 0; i < 3; i++) starNodes.push(Ui.emoji(starRow, '⭐', 44, (i - 1) * 58, 0));
+        const errLb = Ui.label(starRow, '', { size: 22, color: C.redD, x: 150 });
+        const timeoutLb = Ui.label(starRow, '', { size: 22, color: C.blueD, x: -150 });
+
+        /** 按阶梯数组重算剩余星：达到数组中各阈值各扣 1 星（超时 + 错误），扣光返回 0 */
         const updateStars = (): number => {
-            const timeoutPenalty = timeoutApplied ? 1 : 0;
-            su.stars = Math.max(0, 3 - timeoutPenalty - Math.floor(su.errors / cfg!.errorCostStar));
+            const timeoutDed = cfg!.timeCostStar.filter(t => st.sec >= t).length;
+            const errorDed = cfg!.errorCostStar.filter(e => su.errors >= e).length;
+            su.stars = Math.max(0, 3 - timeoutDed - errorDed);
             starNodes.forEach((n, i) => {
                 const op = n.getComponent(UIOpacity) || n.addComponent(UIOpacity);
                 op.opacity = i < su.stars ? 255 : 70;
                 n.setScale(i < su.stars ? 1 : 0.82, i < su.stars ? 1 : 0.82, 1);
             });
             errLb.string = su.errors > 0 ? `错误 ${su.errors}` : '';
+            timeoutLb.string = timeoutDed > 0 ? '已超时' : '';
             return su.stars;
         };
-        // 超时扣星回调（tick 触发）
-        onTimeoutPenalty = () => {
+        // 计时每秒回调：超时阶梯扣星（可能触发失败）
+        onTickStarCheck = () => {
             const s = updateStars();
             if (s <= 0) failGame('超时后星数耗尽');
         };
@@ -291,7 +292,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                 su.errors++;
                 Ui.shake(cells[changed]);
                 const stars = updateStars();
-                if (stars <= 0) { failGame(`每错 ${cfg!.errorCostStar} 次扣 1 星，星数耗尽`); return; }
+                if (stars <= 0) { failGame('错误次数过多，星数耗尽'); return; }
             } else if (su.board.every(x => x > 0)) {
                 const stars = updateStars();
                 winGame(Math.max(1, stars));

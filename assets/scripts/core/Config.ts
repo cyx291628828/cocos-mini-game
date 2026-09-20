@@ -1,13 +1,16 @@
 import { resources, JsonAsset } from 'cc';
 import { GAME_ORDER } from './Data';
 
-/** 数独表行（assets/resources/config/sudoku.json） */
+/** 数独表行（assets/resources/config/sudoku.json）
+ *  扣星为阶梯数组：累计达到数组中每个阈值各扣 1 颗星（最多扣 3 颗，扣光即失败）。
+ *  例：timeCostStar=[60,100,200] → 60s 扣 1 星、100s 扣第 2 星、200s 扣第 3 星；
+*      errorCostStar=[1,3,6] → 错 1 次扣 1 星、第 3 次错扣第 2 星、第 6 次错扣第 3 星。 */
 export interface SudokuCfg {
     id: string;             // 唯一 id，如 su_9_normal
     type: number;           // 数独类型：4 / 6 / 9（宫格规格）
     difficulty: string;     // 难度：简单 / 普通 / 困难
-    timeCostStar: number;   // 超时扣星（秒）：用时超过该值扣 1 颗星
-    errorCostStar: number;  // 错误次数扣星：每错满该次数扣 1 颗星（可累进，扣完 3 星失败）
+    timeCostStar: number[]; // 超时扣星阶梯（秒）：用时达到各值依次扣 1 星
+    errorCostStar: number[];// 错误扣星阶梯（次）：累计错误达到各值依次扣 1 星
     holes: number;          // 挖空数量（出题空格数）
     rewardCoins: number;    // 通关金币奖励
 }
@@ -34,7 +37,7 @@ const CHALLENGE_SUDOKU: Record<string, string> = {
 /** 数独配置加载失败时的兜底 */
 const FALLBACK_SUDOKU: SudokuCfg = {
     id: 'su_9_normal', type: 9, difficulty: '普通',
-    timeCostStar: 200, errorCostStar: 4, holes: 42, rewardCoins: 60,
+    timeCostStar: [120, 240, 360], errorCostStar: [3, 6, 9], holes: 42, rewardCoins: 60,
 };
 
 class ConfigMgr {
