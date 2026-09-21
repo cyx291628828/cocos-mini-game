@@ -289,13 +289,21 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             redrawAll();
             repaintKeys();
             if (su.conflict.has(changed)) {
+                // 本次填入与同行/列/宫重复 → 计错误 + 明确提示
                 su.errors++;
                 Ui.shake(cells[changed]);
+                Modal.toast(`冲突！${su.board[changed]} 在行/列/宫中重复`);
                 const stars = updateStars();
                 if (stars <= 0) { failGame('错误次数过多，星数耗尽'); return; }
             } else if (su.board.every(x => x > 0)) {
-                const stars = updateStars();
-                winGame(Math.max(1, stars));
+                // 填满：必须全盘无冲突才算通关
+                if (su.conflict.size > 0) {
+                    Modal.toast('已填满，但红色格子仍有冲突，改正后即可通关');
+                } else {
+                    const stars = updateStars();
+                    console.log('[Sudoku] 盘面完成 ✓ 星 =', stars);
+                    winGame(Math.max(1, stars));
+                }
             }
         }
         function recomputeConflicts() {
