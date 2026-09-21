@@ -1,0 +1,5 @@
+[
+    { "id": "star_easy",   "board": 7,  "stars": 1, "difficulty": "简单", "timeCostStar": [180],           "rewardCoins": 30 },
+    { "id": "star_normal", "board": 9,  "stars": 2, "difficulty": "普通", "timeCostStar": [240, 420],      "rewardCoins": 45 },
+    { "id": "star_hard",   "board": 10, "stars": 2, "difficulty": "困难", "timeCostStar": [300, 480, 600], "rewardCoins": 60 }
+]

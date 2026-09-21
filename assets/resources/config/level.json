@@ -22,5 +22,17 @@
     { "id": "L1-8",  "chapter": 1, "level": 8,  "game": "mine", "cfgId": "mine_hard" },
     { "id": "L1-9",  "chapter": 1, "level": 9,  "game": "mine", "cfgId": "mine_hard" },
     { "id": "L1-10", "chapter": 1, "level": 10, "game": "mine", "cfgId": "mine_hard" },
-    { "id": "L1-11", "chapter": 1, "level": 11, "game": "mine", "cfgId": "mine_hard" }
+    { "id": "L1-11", "chapter": 1, "level": 11, "game": "mine", "cfgId": "mine_hard" },
+    { "id": "L2-0",  "chapter": 2, "level": 0,  "game": "star", "cfgId": "star_easy" },
+    { "id": "L2-1",  "chapter": 2, "level": 1,  "game": "star", "cfgId": "star_easy" },
+    { "id": "L2-2",  "chapter": 2, "level": 2,  "game": "star", "cfgId": "star_easy" },
+    { "id": "L2-3",  "chapter": 2, "level": 3,  "game": "star", "cfgId": "star_easy" },
+    { "id": "L2-4",  "chapter": 2, "level": 4,  "game": "star", "cfgId": "star_normal" },
+    { "id": "L2-5",  "chapter": 2, "level": 5,  "game": "star", "cfgId": "star_normal" },
+    { "id": "L2-6",  "chapter": 2, "level": 6,  "game": "star", "cfgId": "star_normal" },
+    { "id": "L2-7",  "chapter": 2, "level": 7,  "game": "star", "cfgId": "star_normal" },
+    { "id": "L2-8",  "chapter": 2, "level": 8,  "game": "star", "cfgId": "star_hard" },
+    { "id": "L2-9",  "chapter": 2, "level": 9,  "game": "star", "cfgId": "star_hard" },
+    { "id": "L2-10", "chapter": 2, "level": 10, "game": "star", "cfgId": "star_hard" },
+    { "id": "L2-11", "chapter": 2, "level": 11, "game": "star", "cfgId": "star_hard" }
 ]

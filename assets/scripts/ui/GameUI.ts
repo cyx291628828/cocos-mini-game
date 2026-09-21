@@ -5,9 +5,10 @@ import { Router } from '../core/Router';
 import { SAVE, addCoins, setTimer, fmtTime } from '../core/Save';
 import {
     GAMES, CHAPTERS, LEVELS_PER_CH, skinOf, mulberry32,
-    STAR_ZONES, STAR_POS, SHIKAKU_CLUES, SHIKAKU_RECTS, CH_PERIODS, GameCtx,
+    SHIKAKU_CLUES, SHIKAKU_RECTS, CH_PERIODS, GameCtx,
 } from '../core/Data';
-import { Config, SudokuCfg, MineCfg } from '../core/Config';
+import { Config, SudokuCfg, MineCfg, StarCfg } from '../core/Config';
+import { genStarPuzzle } from '../core/StarGen';
 import { Modal } from './ModalUI';
 import { confetti } from './Confetti';
 import { checkAchievements } from './Achievement';
@@ -25,18 +26,23 @@ export function buildGame(root: Node, ctx?: GameCtx) {
     // ---- 解析玩法与配置行：关卡表优先，挑战按周期映射，兜底默认 ----
     let cfg: SudokuCfg | null = null;
     let mineCfg: MineCfg | null = null;
+    let starCfg: StarCfg | null = null;
     if (ctx.from === 'level') {
         const lv = Config.getLevel(ctx.ci!, ctx.li!);
         ctx.gid = lv.game;
         if (ctx.gid === 'sudoku') cfg = lv.cfgId ? Config.getSudoku(lv.cfgId) : null;
         if (ctx.gid === 'mine') mineCfg = lv.cfgId ? Config.getMine(lv.cfgId) : null;
+        if (ctx.gid === 'star') starCfg = lv.cfgId ? Config.getStar(lv.cfgId) : null;
     } else if (ctx.gid === 'sudoku') {
         cfg = Config.getSudoku(Config.getChallengeSudokuId(ctx.challengeKey || 'daily'));
     } else if (ctx.gid === 'mine') {
         mineCfg = Config.getMine(Config.getChallengeMineId(ctx.challengeKey || 'daily'));
+    } else if (ctx.gid === 'star') {
+        starCfg = Config.getStar(Config.getChallengeStarId(ctx.challengeKey || 'daily'));
     }
     if (ctx.gid === 'sudoku' && !cfg) cfg = Config.getFallbackSudoku();
     if (ctx.gid === 'mine' && !mineCfg) mineCfg = Config.getFallbackMine();
+    if (ctx.gid === 'star' && !starCfg) starCfg = Config.getFallbackStar();
 
     const W = Ui.W(), H = Ui.H();
     const g = GAMES[ctx.gid];
@@ -53,9 +59,9 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         errors: 0,
     };
 
-    /* 顶栏（数独/扫雷使用参考图专属布局，见各自 build 函数） */
+    /* 顶栏（数独/扫雷/星之战使用参考图专属布局，见各自 build 函数） */
     let timerLb: Label | null = null;
-    if (ctx.gid !== 'sudoku' && ctx.gid !== 'mine') {
+    if (ctx.gid !== 'sudoku' && ctx.gid !== 'mine' && ctx.gid !== 'star') {
         const top = Ui.node(root, W, 110, 0, H / 2 - 85);
         Ui.circleBtn(top, 84, '⏸', { x: -W / 2 + 80, emojiSize: 40, onClick: openPause });
         const info = Ui.panel(top, 380, 92, { x: 50, r: 24 });
@@ -88,6 +94,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         buildSudoku(cfg);
     } else if (ctx.gid === 'mine' && mineCfg) {
         buildMine(mineCfg);
+    } else if (ctx.gid === 'star' && starCfg) {
+        buildStarBattle(starCfg);
     } else {
         /* 其他玩法：棋盘 + 演示结算（规则后续接入） */
         /* 非数独：棋盘 + 演示结算（规则后续接入） */
@@ -104,8 +112,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         board.setScale(0.7, 0.7, 1);
         tween(board).delay(0.08).to(0.42, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
 
-        if (ctx.gid === 'star') drawStar();
-        else if (ctx.gid === 'shikaku') drawShikaku();
+        if (ctx.gid === 'shikaku') drawShikaku();
         else drawKillerLike();
 
         const toolbar = Ui.node(root, W, 120, 0, -H / 2 + 90);
@@ -738,23 +745,211 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         };
     }
 
-    function drawStar() {
-        const cs = boardSize / 7;
-        const zoneColors = ['rgba(140,200,120,0.5)', 'rgba(120,180,235,0.5)', 'rgba(250,180,120,0.5)', 'rgba(230,140,180,0.5)', 'rgba(180,150,235,0.5)', 'rgba(250,220,120,0.5)', 'rgba(120,210,200,0.5)'];
-        eachCell(7, (i, x, y) => {
-            const r = Math.floor(i / 7), c = i % 7;
-            const holder = Ui.node(board, cs - 6, cs - 6, x, y);
-            const cg = Ui.gnode(holder, cs - 6, cs - 6);
-            Ui.rr(cg.g, cs - 6, cs - 6, 10, zoneColors[STAR_ZONES[r].charCodeAt(c) - 65]);
-            if (STAR_POS.includes(i)) Ui.emoji(holder, '⭐', cs * 0.6);
+    /* ================= 星之战（真实规则，配置驱动） ================= */
+
+    function buildStarBattle(cfg: StarCfg) {
+        const N = cfg.board, K = cfg.stars;
+        const totalStarsNeed = N * K;
+
+        // 出题（同步生成；固定种子 → 同关同题；失败换种子重试）
+        let seed = ctx!.from === 'level'
+            ? ctx!.ci! * 100 + ctx!.li!
+            : (ctx!.challengeKey === 'weekly' ? 71 : ctx!.challengeKey === 'monthly' ? 131 : 7);
+        let puzzle = genStarPuzzle(N, K, seed);
+        for (let t = 1; t <= 4 && !puzzle; t++) puzzle = genStarPuzzle(N, K, seed + t * 977);
+        if (!puzzle) {
+            Modal.open(box => {
+                const p = Ui.panel(box, 560, 420);
+                Ui.label(p, '⚠️ 本关题目生成异常', { size: 36, y: 60 });
+                Ui.label(p, '请退出后重试', { size: 24, color: C.inkSoft, y: 5 });
+                Ui.candyBtn(p, 220, 90, '退 出', [C.pinkH, C.pink, C.pinkD], { y: -100, fontSize: 30, onClick: () => { Modal.close(); Router.back(); } });
+            });
+            return;
+        }
+
+        /* 布局（同数独/扫雷参考图结构） */
+        const toolsY = -H / 2 + 222;
+        const topY = H / 2 - 105;
+        const statsY = topY - 137;
+        const boardTop = statsY - 70;
+        const boardBottom = toolsY + 58;
+        boardSize = Math.min(W - 70, 640, boardTop - boardBottom - 36);
+        const boardY = (boardTop + boardBottom) / 2;
+        const cs = boardSize / N;
+
+        /* 顶部信息卡 */
+        const topPanel = Ui.panel(root, W - 60, 150, { x: 0, y: topY, r: 26 });
+        const pw = (W - 60) / 2;
+        Ui.circleBtn(topPanel, 64, '⏸', { x: -pw + 52, emojiSize: 28, onClick: openPause });
+        timerLb = Ui.label(topPanel, '00:00', { size: 54, color: C.ink, x: -86, y: 20 });
+        Ui.label(topPanel, '计时器', { size: 20, color: C.inkSoft, x: -86, y: -30 });
+        const diffPill = Ui.pill(topPanel, 236, 62, { x: pw - 138, y: 28, bg: C.gold, edge: C.goldD });
+        Ui.label(diffPill, `难度 · ${cfg.difficulty}`, { size: 26, color: '#FFFFFF', y: 2 });
+        Ui.label(topPanel, ctx!.from === 'level'
+            ? `${CHAPTERS[ctx!.ci!].name} · 第 ${ctx!.li! + 1} 关`
+            : `挑战模式 · ${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.name ?? ''}`,
+            { size: 20, color: C.inkSoft, x: pw - 138, y: -28 });
+
+        /* 统计卡：已放星数 / 最佳时间 */
+        const cw = (W - 108) / 2;
+        const cardPut = Ui.panel(root, cw, 104, { x: -(cw + 12) / 2, y: statsY, r: 18 });
+        Ui.label(cardPut, '已放星数', { size: 20, color: C.inkSoft, y: 28 });
+        const putLb = Ui.label(cardPut, `0/${totalStarsNeed}`, { size: 32, color: C.ink, y: -16 });
+
+        const cardBest = Ui.panel(root, cw, 104, { x: (cw + 12) / 2, y: statsY, r: 18 });
+        Ui.label(cardBest, '最佳时间', { size: 20, color: C.inkSoft, y: 28 });
+        const bestSec = (SAVE.data.best || {})[cfg.id];
+        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 32, color: '#C89B3C', y: -16 });
+
+        /** 星级在结算时计算：星之战无失败路径，仅按超时阶梯扣星 */
+        const calcStars = (): number => {
+            const timeoutDed = cfg!.timeCostStar.filter(t => st.sec >= t).length;
+            return Math.max(0, 3 - timeoutDed);
+        };
+
+        /* 玩法状态：0 空 / 1 星 / 2 X 排除标记，点击循环 */
+        const cellState = new Array(N * N).fill(0);
+
+        /* 棋盘：区域色块 + 区域粗界线 + 格线 */
+        board = Ui.node(root, boardSize + 30, boardSize + 30, 0, boardY);
+        const frame = Ui.gnode(board, boardSize + 30, boardSize + 30);
+        Ui.rr(frame.g, boardSize + 30, boardSize + 30, 20, '#C8A058');
+        const frameIn = Ui.gnode(board, boardSize + 22, boardSize + 22);
+        Ui.rr(frameIn.g, boardSize + 22, boardSize + 22, 16, sk.frame);
+        const face = Ui.gnode(board, boardSize + 12, boardSize + 12);
+        Ui.rr(face.g, boardSize + 12, boardSize + 12, 12, sk.cell);
+
+        // 区域色块（波前区域随索引取浅色）
+        const regionTints = ['#F7E7C5', '#E8F0D8', '#F9E4D4', '#DDEBF7', '#F2E4F7', '#E4F2EF', '#F7EDD4', '#E7E9F7', '#F0E4E0', '#E2F0E2', '#F7E0EA', '#E0EDF0'];
+        for (let i = 0; i < N * N; i++) {
+            const r = Math.floor(i / N), c = i % N;
+            const x = -boardSize / 2 + cs / 2 + c * cs;
+            const y = boardSize / 2 - cs / 2 - r * cs;
+            const tint = Ui.gnode(board, cs, cs, x, y);
+            Ui.rr(tint.g, cs, cs, 0, regionTints[puzzle.regions[i] % regionTints.length] ?? sk.cell);
+        }
+        // 格线 + 区域粗界线
+        const lines = Ui.gnode(board, boardSize, boardSize);
+        const half = boardSize / 2;
+        lines.g.strokeColor = hex('#D8C49E');
+        lines.g.lineWidth = 2;
+        for (let k = 1; k < N; k++) {
+            lines.g.moveTo(-half, half - k * cs); lines.g.lineTo(half, half - k * cs);
+            lines.g.moveTo(-half + k * cs, half); lines.g.lineTo(-half + k * cs, -half);
+        }
+        lines.g.stroke();
+        lines.g.strokeColor = hex(sk.given);
+        lines.g.lineWidth = 6;
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+            const i = r * N + c;
+            const x = -half + c * cs, y = half - r * cs - cs;
+            if (r === 0 || puzzle.regions[i] !== puzzle.regions[i - N]) { lines.g.moveTo(x, y + cs); lines.g.lineTo(x + cs, y + cs); }
+            if (r === N - 1 || puzzle.regions[i] !== puzzle.regions[i + N]) { lines.g.moveTo(x, y); lines.g.lineTo(x + cs, y); }
+            if (c === 0 || puzzle.regions[i] !== puzzle.regions[i - 1]) { lines.g.moveTo(x, y); lines.g.lineTo(x, y + cs); }
+            if (c === N - 1 || puzzle.regions[i] !== puzzle.regions[i + 1]) { lines.g.moveTo(x + cs, y); lines.g.lineTo(x + cs, y + cs); }
+        }
+        lines.g.stroke();
+
+        /* 格子（透明命中 + 状态绘制：星/X/冲突红） */
+        const sz = cs - 6;
+        const conflicts = new Set<number>();
+        const redrawAll = () => { for (let i = 0; i < N * N; i++) redrawCell(i); };
+        const redrawCell = (i: number) => {
+            const cg = cellGraphs[i];
+            cg.clear();
+            const lb = cellLabels[i]!;
+            const s = cellState[i];
+            if (s === 1) {
+                const bad = conflicts.has(i);
+                Ui.rr(cg, sz, sz, 8, bad ? '#FFC2C2' : '#FFE9A8');
+                lb.string = '⭐';
+                lb.fontSize = sz * 0.55;
+                lb.color = hex(bad ? '#D04848' : '#E8940A');
+            } else if (s === 2) {
+                lb.string = '✕';
+                lb.fontSize = sz * 0.5;
+                lb.color = hex('#C9B896');
+            } else {
+                lb.string = '';
+            }
+        };
+        const recount = () => {
+            // 相邻冲突
+            conflicts.clear();
+            for (let i = 0; i < N * N; i++) {
+                if (cellState[i] !== 1) continue;
+                for (const j of neighborsOf(i, N)) if (cellState[j] === 1) { conflicts.add(i); conflicts.add(j); }
+            }
+            let placed = 0;
+            for (let i = 0; i < N * N; i++) if (cellState[i] === 1) placed++;
+            putLb.string = `${placed}/${totalStarsNeed}`;
+            return placed;
+        };
+        const checkWin = () => {
+            if (st.finished) return;
+            let placed = 0;
+            for (let i = 0; i < N * N; i++) if (cellState[i] === 1) placed++;
+            if (placed !== totalStarsNeed || conflicts.size > 0) return;
+            // 行/列/区域各恰 K 星
+            const rowC = new Array(N).fill(0), colC = new Array(N).fill(0), regC = new Array(N).fill(0);
+            for (let i = 0; i < N * N; i++) {
+                if (cellState[i] !== 1) continue;
+                rowC[Math.floor(i / N)]++; colC[i % N]++; regC[puzzle.regions[i]]++;
+            }
+            const ok = rowC.every(v => v === K) && colC.every(v => v === K) && regC.every(v => v === K);
+            if (!ok) return;   // 不满足则继续（可辅助高亮，暂留给玩家自查）
+            st.paused = true;
+            console.log('[Star] 星之战完成 ✓ 星 =', calcStars());
+            winGame();
+        };
+        function winGame() {
+            if (st.finished) return;
+            st.paused = true;
+            const best = SAVE.data.best || (SAVE.data.best = {});
+            if (!best[cfg.id] || st.sec < best[cfg.id]) best[cfg.id] = st.sec;
+            finish(calcStars(), cfg!.rewardCoins);   // st.finished 由 finish 内部置位
+        }
+
+        eachCell(N, (i, x, y) => {
+            const holder = Ui.node(board, cs, cs, x, y);
+            const cg = Ui.gnode(holder, cs, cs);
             cells.push(holder);
             cellGraphs.push(cg.g);
-            cellLabels.push(null);
+            cellLabels.push(Ui.label(holder, '', { size: sz * 0.55 }));
             Ui.bindTap(holder, () => {
-                holder.setScale(0.9, 0.9, 1);
-                tween(holder).to(0.2, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
+                if (st.finished) return;
+                cellState[i] = (cellState[i] + 1) % 3;   // 空 → 星 → X → 空
+                recount();
+                redrawAll();
+                checkWin();
             });
         });
+        recount();
+        redrawAll();
+
+        /* 工具行：清除全部标记 */
+        const tools = Ui.node(root, W, 96, 0, toolsY);
+        Ui.candyBtn(tools, 300, 96, '🧹 清除全部', [C.blueH, C.blue, C.blueD], {
+            x: 0, fontSize: 30,
+            onClick: () => {
+                if (st.finished) return;
+                for (let i = 0; i < N * N; i++) cellState[i] = 0;
+                recount();
+                redrawAll();
+            },
+        });
+        Ui.label(tools, `点击格子循环：放星 ⭐ → 标记 ✕ → 清空（每行/列/区域各 ${K} 星，星不相邻）`, { size: 19, color: C.inkSoft, y: -76 });
+    }
+
+    function neighborsOf(i: number, N: number): number[] {
+        const out: number[] = [];
+        const r = Math.floor(i / N), c = i % N;
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+            if (!dr && !dc) continue;
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < N && nc >= 0 && nc < N) out.push(nr * N + nc);
+        }
+        return out;
     }
 
     function drawShikaku() {

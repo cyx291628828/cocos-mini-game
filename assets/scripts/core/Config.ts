@@ -26,6 +26,17 @@ export interface MineCfg {
     rewardCoins: number;    // 通关金币奖励
 }
 
+/** 星之战表行（assets/resources/config/star.json）
+ *  每行/每列/每个区域恰好放 stars 颗星，星不能相邻（含对角线）；无失败路径，星级仅由超时阶梯决定。 */
+export interface StarCfg {
+    id: string;             // 唯一 id，如 star_hard
+    board: number;          // 棋盘边长：board × board 格（= 区域数）
+    stars: number;          // 每行/列/区域的星数（1~3）
+    difficulty: string;     // 难度：简单 / 普通 / 困难
+    timeCostStar: number[]; // 超时扣星阶梯（秒）
+    rewardCoins: number;    // 通关金币奖励
+}
+
 /** 关卡表行（assets/resources/config/level.json）
  *  在表里填一行即可把某关指定为某玩法的某配置 id：
  *  { "id": "L1-5", "chapter": 0, "level": 5, "game": "sudoku", "cfgId": "su_6_normal" }
@@ -52,6 +63,13 @@ const CHALLENGE_MINE: Record<string, string> = {
     monthly: 'mine_hard',
 };
 
+/** 挑战模式默认使用的星之战配置 */
+const CHALLENGE_STAR: Record<string, string> = {
+    daily: 'star_easy',
+    weekly: 'star_normal',
+    monthly: 'star_hard',
+};
+
 /** 数独配置加载失败时的兜底 */
 const FALLBACK_SUDOKU: SudokuCfg = {
     id: 'su_9_normal', type: 9, difficulty: '普通',
@@ -64,18 +82,26 @@ const FALLBACK_MINE: MineCfg = {
     timeCostStar: [180, 300], rewardCoins: 45,
 };
 
+/** 星之战配置加载失败时的兜底 */
+const FALLBACK_STAR: StarCfg = {
+    id: 'star_normal', board: 9, stars: 2, difficulty: '普通',
+    timeCostStar: [240, 420], rewardCoins: 45,
+};
+
 class ConfigMgr {
     sudokuList: SudokuCfg[] = [];
     mineList: MineCfg[] = [];
+    starList: StarCfg[] = [];
     levelList: LevelCfg[] = [];
     ready = false;
     private sudokuMap = new Map<string, SudokuCfg>();
     private mineMap = new Map<string, MineCfg>();
+    private starMap = new Map<string, StarCfg>();
     private levelMap = new Map<string, LevelCfg>();
 
     /** 在 Game.start 里调用（resources 异步加载） */
     load(cb?: () => void) {
-        let pending = 3;
+        let pending = 4;
         const done = () => { if (--pending === 0) { this.ready = true; if (cb) cb(); } };
         resources.load('config/sudoku', JsonAsset, (err, asset) => {
             if (!err && asset && Array.isArray(asset.json)) this.sudokuList = asset.json as SudokuCfg[];
@@ -90,6 +116,13 @@ class ConfigMgr {
             this.mineMap.clear();
             this.mineList.forEach(c => this.mineMap.set(c.id, c));
             if (this.mineList.length) console.log('[Config] 扫雷表加载', this.mineList.length, '行');
+            done();
+        });
+        resources.load('config/star', JsonAsset, (err, asset) => {
+            if (!err && asset && Array.isArray(asset.json)) this.starList = asset.json as StarCfg[];
+            this.starMap.clear();
+            this.starList.forEach(c => this.starMap.set(c.id, c));
+            if (this.starList.length) console.log('[Config] 星之战表加载', this.starList.length, '行');
             done();
         });
         resources.load('config/level', JsonAsset, (err, asset) => {
@@ -109,6 +142,37 @@ class ConfigMgr {
         return this.mineMap.get(id) || null;
     }
 
+    getStar(id: string): StarCfg | null {
+        return this.starMap.get(id) || null;
+    }
+
+    /** 挑战模式的数独配置 id */
+    getChallengeSudokuId(key: string): string {
+        return CHALLENGE_SUDOKU[key] || 'su_9_normal';
+    }
+
+    /** 挑战模式的扫雷配置 id */
+    getChallengeMineId(key: string): string {
+        return CHALLENGE_MINE[key] || 'mine_normal';
+    }
+
+    /** 挑战模式的星之战配置 id */
+    getChallengeStarId(key: string): string {
+        return CHALLENGE_STAR[key] || 'star_normal';
+    }
+
+    getFallbackSudoku(): SudokuCfg {
+        return { ...FALLBACK_SUDOKU };
+    }
+
+    getFallbackMine(): MineCfg {
+        return { ...FALLBACK_MINE };
+    }
+
+    getFallbackStar(): StarCfg {
+        return { ...FALLBACK_STAR };
+    }
+
     /** 章节关序 → 玩法与配置：关卡表行优先，未配置走默认轮换 */
     getLevel(ci: number, li: number): { game: string; cfgId: string } {
         const hit = this.levelMap.get(ci + '-' + li);
@@ -126,24 +190,6 @@ class ConfigMgr {
         const pool = pools[Math.min(ci, pools.length - 1)];
         const cfgId = game === 'sudoku' ? pool[li % pool.length] : '';
         return { game, cfgId };
-    }
-
-    /** 挑战模式的数独配置 id */
-    getChallengeSudokuId(key: string): string {
-        return CHALLENGE_SUDOKU[key] || 'su_9_normal';
-    }
-
-    /** 挑战模式的扫雷配置 id */
-    getChallengeMineId(key: string): string {
-        return CHALLENGE_MINE[key] || 'mine_normal';
-    }
-
-    getFallbackSudoku(): SudokuCfg {
-        return { ...FALLBACK_SUDOKU };
-    }
-
-    getFallbackMine(): MineCfg {
-        return { ...FALLBACK_MINE };
     }
 }
 
