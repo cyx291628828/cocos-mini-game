@@ -318,9 +318,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         }
         function winGame(stars: number) {
             if (st.finished) return;
-            st.finished = true;
             st.paused = true;
-            finish(stars, cfg!.rewardCoins);
+            finish(stars, cfg!.rewardCoins);   // st.finished 由 finish 内部置位
         }
     }
 
