@@ -10,5 +10,17 @@
     { "id": "L0-8",  "chapter": 0, "level": 8,  "game": "sudoku", "cfgId": "su_9_easy" },
     { "id": "L0-9",  "chapter": 0, "level": 9,  "game": "sudoku", "cfgId": "su_9_normal" },
     { "id": "L0-10", "chapter": 0, "level": 10, "game": "sudoku", "cfgId": "su_9_hard" },
-    { "id": "L0-11", "chapter": 0, "level": 11, "game": "sudoku", "cfgId": "su_9_hard" }
+    { "id": "L0-11", "chapter": 0, "level": 11, "game": "sudoku", "cfgId": "su_9_hard" },
+    { "id": "L1-0",  "chapter": 1, "level": 0,  "game": "mine", "cfgId": "mine_easy" },
+    { "id": "L1-1",  "chapter": 1, "level": 1,  "game": "mine", "cfgId": "mine_easy" },
+    { "id": "L1-2",  "chapter": 1, "level": 2,  "game": "mine", "cfgId": "mine_easy" },
+    { "id": "L1-3",  "chapter": 1, "level": 3,  "game": "mine", "cfgId": "mine_easy" },
+    { "id": "L1-4",  "chapter": 1, "level": 4,  "game": "mine", "cfgId": "mine_normal" },
+    { "id": "L1-5",  "chapter": 1, "level": 5,  "game": "mine", "cfgId": "mine_normal" },
+    { "id": "L1-6",  "chapter": 1, "level": 6,  "game": "mine", "cfgId": "mine_normal" },
+    { "id": "L1-7",  "chapter": 1, "level": 7,  "game": "mine", "cfgId": "mine_normal" },
+    { "id": "L1-8",  "chapter": 1, "level": 8,  "game": "mine", "cfgId": "mine_hard" },
+    { "id": "L1-9",  "chapter": 1, "level": 9,  "game": "mine", "cfgId": "mine_hard" },
+    { "id": "L1-10", "chapter": 1, "level": 10, "game": "mine", "cfgId": "mine_hard" },
+    { "id": "L1-11", "chapter": 1, "level": 11, "game": "mine", "cfgId": "mine_hard" }
 ]

@@ -7,12 +7,11 @@ import {
     GAMES, CHAPTERS, LEVELS_PER_CH, skinOf, mulberry32,
     STAR_ZONES, STAR_POS, SHIKAKU_CLUES, SHIKAKU_RECTS, CH_PERIODS, GameCtx,
 } from '../core/Data';
-import { Config, SudokuCfg } from '../core/Config';
+import { Config, SudokuCfg, MineCfg } from '../core/Config';
 import { Modal } from './ModalUI';
 import { confetti } from './Confetti';
 import { checkAchievements } from './Achievement';
 
-const MINE_N = 9, MINE_COUNT = 10;
 const NUM_COLORS = ['#2F7FC0', '#48A030', '#E04E4E', '#7744C9', '#C96A00', '#0FA3A3', '#B03030', '#666666', '#555555'];
 
 /**
@@ -25,14 +24,19 @@ export function buildGame(root: Node, ctx?: GameCtx) {
 
     // ---- 解析玩法与配置行：关卡表优先，挑战按周期映射，兜底默认 ----
     let cfg: SudokuCfg | null = null;
+    let mineCfg: MineCfg | null = null;
     if (ctx.from === 'level') {
         const lv = Config.getLevel(ctx.ci!, ctx.li!);
         ctx.gid = lv.game;
         if (ctx.gid === 'sudoku') cfg = lv.cfgId ? Config.getSudoku(lv.cfgId) : null;
+        if (ctx.gid === 'mine') mineCfg = lv.cfgId ? Config.getMine(lv.cfgId) : null;
     } else if (ctx.gid === 'sudoku') {
         cfg = Config.getSudoku(Config.getChallengeSudokuId(ctx.challengeKey || 'daily'));
+    } else if (ctx.gid === 'mine') {
+        mineCfg = Config.getMine(Config.getChallengeMineId(ctx.challengeKey || 'daily'));
     }
     if (ctx.gid === 'sudoku' && !cfg) cfg = Config.getFallbackSudoku();
+    if (ctx.gid === 'mine' && !mineCfg) mineCfg = Config.getFallbackMine();
 
     const W = Ui.W(), H = Ui.H();
     const g = GAMES[ctx.gid];
@@ -49,9 +53,9 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         errors: 0,
     };
 
-    /* 顶栏（非数独玩法；数独使用参考图专属布局，见 buildSudoku） */
+    /* 顶栏（数独/扫雷使用参考图专属布局，见各自 build 函数） */
     let timerLb: Label | null = null;
-    if (ctx.gid !== 'sudoku') {
+    if (ctx.gid !== 'sudoku' && ctx.gid !== 'mine') {
         const top = Ui.node(root, W, 110, 0, H / 2 - 85);
         Ui.circleBtn(top, 84, '⏸', { x: -W / 2 + 80, emojiSize: 40, onClick: openPause });
         const info = Ui.panel(top, 380, 92, { x: 50, r: 24 });
@@ -82,7 +86,10 @@ export function buildGame(root: Node, ctx?: GameCtx) {
 
     if (ctx.gid === 'sudoku' && cfg) {
         buildSudoku(cfg);
+    } else if (ctx.gid === 'mine' && mineCfg) {
+        buildMine(mineCfg);
     } else {
+        /* 其他玩法：棋盘 + 演示结算（规则后续接入） */
         /* 非数独：棋盘 + 演示结算（规则后续接入） */
         boardSize = Math.min(W - 90, 640);
         const boardY = 50;
@@ -97,8 +104,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         board.setScale(0.7, 0.7, 1);
         tween(board).delay(0.08).to(0.42, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
 
-        if (ctx.gid === 'mine') drawMine();
-        else if (ctx.gid === 'star') drawStar();
+        if (ctx.gid === 'star') drawStar();
         else if (ctx.gid === 'shikaku') drawShikaku();
         else drawKillerLike();
 
@@ -528,56 +534,208 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         }
     }
 
-    function drawMine() {
-        const rng = mulberry32(9527);
-        const mines = new Set<number>();
-        while (mines.size < MINE_COUNT) mines.add(Math.floor(rng() * MINE_N * MINE_N));
+    /* ================= 扫雷（真实规则，配置驱动） ================= */
+
+    function buildMine(cfg: MineCfg) {
+        const N = cfg.board;
+
+        /* 布局（与数独同款参考图结构） */
+        const padY = -H / 2 + 100;
+        const toolsY = padY + 122;
+        const topY = H / 2 - 105;
+        const statsY = topY - 137;
+        const boardTop = statsY - 70;
+        const boardBottom = toolsY + 58;
+        boardSize = Math.min(W - 70, 640, boardTop - boardBottom - 36);
+        const boardY = (boardTop + boardBottom) / 2;
+        const cs = boardSize / N;
+
+        /* 顶部信息卡 */
+        const topPanel = Ui.panel(root, W - 60, 150, { x: 0, y: topY, r: 26 });
+        const pw = (W - 60) / 2;
+        Ui.circleBtn(topPanel, 64, '⏸', { x: -pw + 52, emojiSize: 28, onClick: openPause });
+        timerLb = Ui.label(topPanel, '00:00', { size: 54, color: C.ink, x: -86, y: 20 });
+        Ui.label(topPanel, '计时器', { size: 20, color: C.inkSoft, x: -86, y: -30 });
+        const diffPill = Ui.pill(topPanel, 236, 62, { x: pw - 138, y: 28, bg: C.gold, edge: C.goldD });
+        Ui.label(diffPill, `难度 · ${cfg.difficulty}`, { size: 26, color: '#FFFFFF', y: 2 });
+        Ui.label(topPanel, ctx!.from === 'level'
+            ? `${CHAPTERS[ctx!.ci!].name} · 第 ${ctx!.li! + 1} 关`
+            : `挑战模式 · ${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.name ?? ''}`,
+            { size: 20, color: C.inkSoft, x: pw - 138, y: -28 });
+
+        /* 统计卡：剩余雷数 / 最佳时间（踩雷立即失败，无错误计数展示） */
+        const cw = (W - 108) / 2;
+        const cardMine = Ui.panel(root, cw, 104, { x: -(cw + 12) / 2, y: statsY, r: 18 });
+        Ui.label(cardMine, '剩余雷数', { size: 20, color: C.inkSoft, y: 28 });
+        const mineLb = Ui.label(cardMine, String(cfg.mines), { size: 32, color: C.ink, y: -16 });
+
+        const cardBest = Ui.panel(root, cw, 104, { x: (cw + 12) / 2, y: statsY, r: 18 });
+        Ui.label(cardBest, '最佳时间', { size: 20, color: C.inkSoft, y: 28 });
+        const bestSec = (SAVE.data.best || {})[cfg.id];
+        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 32, color: '#C89B3C', y: -16 });
+
+        /** 星级在结算时计算：踩雷即失败（无错误维度），仅按超时阶梯扣星 */
+        const calcStars = (): number => {
+            const timeoutDed = cfg!.timeCostStar.filter(t => st.sec >= t).length;
+            return Math.max(0, 3 - timeoutDed);
+        };
+
+        /* 状态 */
+        const N2 = N * N;
+        let mines = new Set<number>();
+        const state = new Array(N2).fill(0);   // 0 未翻 / 1 翻开 / 2 插旗 / 3 踩过的雷
+        let flags = 0, errors = 0, first = true, flagMode = false;
+        let openedSafe = 0;
+
         const around = (i: number, fn: (j: number) => void) => {
-            const r = Math.floor(i / MINE_N), c = i % MINE_N;
+            const r = Math.floor(i / N), c = i % N;
             for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
                 if (!dr && !dc) continue;
                 const nr = r + dr, nc = c + dc;
-                if (nr >= 0 && nr < MINE_N && nc >= 0 && nc < MINE_N) fn(nr * MINE_N + nc);
+                if (nr >= 0 && nr < N && nc >= 0 && nc < N) fn(nr * N + nc);
             }
         };
-        const count = (i: number) => { let n = 0; around(i, j => { if (mines.has(j)) n++; }); return n; };
-        const cs = boardSize / MINE_N;
-        eachCell(MINE_N, (i, x, y) => {
-            const holder = Ui.node(board, cs - 8, cs - 8, x, y);
-            const cg = Ui.gnode(holder, cs - 8, cs - 8);
-            drawMineCell(cg.g, false);
+
+        /* 首点保护：雷避开首点及其周围（首点周围无雷，首击必有扩散） */
+        const placeMines = (safe: number) => {
+            const banned = new Set<number>([safe]);
+            around(safe, j => banned.add(j));
+            mines = new Set<number>();
+            while (mines.size < Math.min(cfg.mines, N2 - banned.size)) {
+                const i = Math.floor(Math.random() * N2);
+                if (!banned.has(i)) mines.add(i);
+            }
+        };
+        const countAt = (i: number) => { let n = 0; around(i, j => { if (mines.has(j)) n++; }); return n; };
+
+        /* 棋盘 */
+        board = Ui.node(root, boardSize + 30, boardSize + 30, 0, boardY);
+        const frame = Ui.gnode(board, boardSize + 30, boardSize + 30);
+        Ui.rr(frame.g, boardSize + 30, boardSize + 30, 20, '#C8A058');
+        const frameIn = Ui.gnode(board, boardSize + 22, boardSize + 22);
+        Ui.rr(frameIn.g, boardSize + 22, boardSize + 22, 16, sk.frame);
+        const face = Ui.gnode(board, boardSize + 12, boardSize + 12);
+        Ui.rr(face.g, boardSize + 12, boardSize + 12, 12, sk.cellAlt);
+
+        const sz = cs - 6;
+        const drawCell = (i: number) => {
+            const cg = cellGraphs[i];
+            cg.clear();
+            const s = state[i];
+            const lb = cellLabels[i]!;
+            if (s === 1 || s === 3) {
+                // 翻开 / 踩过的雷：平坦
+                Ui.rr(cg, sz, sz, 6, s === 3 ? '#FFC2C2' : sk.cell);
+                if (s === 3) { lb.string = '💣'; lb.fontSize = sz * 0.5; lb.color = hex('#333333'); }
+            } else {
+                // 未翻 / 插旗：凸起
+                Ui.rr(cg, sz, sz, 6, '#00000030');
+                Ui.rr(cg, sz - 5, sz - 5, 5, sk.cellAlt);
+                cg.fillColor = hex('#FFFFFF45');
+                cg.roundRect(-(sz - 5) / 2 + 3, (sz - 5) * 0.12, sz - 11, (sz - 5) * 0.26, 4);
+                cg.fill();
+                lb.string = s === 2 ? '🚩' : '';
+                lb.fontSize = sz * 0.5;
+            }
+        };
+        const setLabel = (i: number, text: string, color: string) => {
+            const lb = cellLabels[i]!;
+            lb.string = text;
+            lb.color = hex(color);
+            lb.fontSize = text.length > 1 ? sz * 0.5 : sz * 0.55;
+        };
+
+        eachCell(N, (i, x, y) => {
+            const holder = Ui.node(board, cs - 6, cs - 6, x, y);
+            const cg = Ui.gnode(holder, cs - 6, cs - 6);
             cells.push(holder);
             cellGraphs.push(cg.g);
-            cellLabels.push(null);
-            Ui.bindTap(holder, () => {
-                if (st.finished || (holder as any)._open) return;
-                (holder as any)._open = true;
-                const gg = holder.children[0].getComponent(Graphics)!;
-                drawMineCell(gg, true);
-                const n = count(i);
-                const size = cs - 8;
-                if (mines.has(i)) Ui.label(holder, '💥', { size: size * 0.6 });
-                else if (n) Ui.label(holder, String(n), { size: size * 0.58, color: NUM_COLORS[n - 1] });
-                holder.setScale(0.6, 0.6, 1);
-                tween(holder).to(0.18, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
-            });
+            cellLabels.push(Ui.label(holder, '', { size: sz * 0.55 }));
+            Ui.bindTap(holder, () => tapCell(i));
         });
-    }
+        for (let i = 0; i < N2; i++) drawCell(i);
 
-    function drawMineCell(g: Graphics, opened: boolean) {
-        const cs = boardSize / MINE_N - 8;
-        g.clear();
-        if (opened) {
-            Ui.rr(g, cs, cs, 6, sk.cell);
-        } else {
-            Ui.rr(g, cs, cs, 6, '#00000028');
-            g.strokeColor = hex('#FFFFFF66'); g.lineWidth = 3;
-            g.roundRect(-cs / 2 + 3, -cs / 2 + 3, cs - 6, cs - 6, 5);
-            g.stroke();
-            g.fillColor = hex('#FFFFFF30');
-            g.roundRect(-cs / 2 + 4, cs * 0.1, cs - 8, cs * 0.24, 4);
-            g.fill();
+        /* 翻格（含扩散） */
+        const openCell = (i: number) => {
+            if (state[i] !== 0) return;
+            state[i] = 1;
+            openedSafe++;
+            const n = countAt(i);
+            drawCell(i);
+            if (mines.has(i)) return;   // 理论不可达（雷在外层处理）
+            if (n > 0) setLabel(i, String(n), NUM_COLORS[n - 1]);
+            else around(i, j => { if (state[j] === 0) openCell(j); });
+        };
+
+        const tapCell = (i: number) => {
+            if (st.finished) return;
+            const s = state[i];
+            if (flagMode) {
+                // 插旗 / 拔旗（仅未翻格）
+                if (s === 2) { state[i] = 0; flags--; }
+                else if (s === 0) { state[i] = 2; flags++; }
+                else return;
+                mineLb.string = String(Math.max(0, cfg.mines - flags));
+                drawCell(i);
+                return;
+            }
+            if (s === 2) return;                 // 旗格不能挖
+            if (first) { placeMines(i); first = false; }
+            if (mines.has(i)) {
+                // 踩雷：立即失败结算（先看 0.6 秒爆炸再弹面板）
+                errors++;
+                state[i] = 3;
+                drawCell(i);
+                setLabel(i, '💥', '#333333');
+                Ui.shake(cells[i]);
+                setTimer(() => failGame('踩到雷！', errors), 600);
+                return;
+            }
+            openCell(i);
+            checkWin();
+        };
+
+        const checkWin = () => {
+            if (st.finished || first) return;
+            if (openedSafe >= N2 - cfg.mines) {
+                st.paused = true;
+                console.log('[Mine] 扫雷完成 ✓ 星 =', calcStars());
+                winGame();
+            }
+        };
+
+        function winGame() {
+            if (st.finished) return;
+            st.paused = true;
+            // 记录最佳时间（按扫雷配置 id）
+            const best = SAVE.data.best || (SAVE.data.best = {});
+            if (!best[cfg.id] || st.sec < best[cfg.id]) best[cfg.id] = st.sec;
+            finish(calcStars(), cfg!.rewardCoins);   // st.finished 由 finish 内部置位
         }
+
+        /* 工具行：插旗模式（剩余雷数见上方统计卡） */
+        const tools = Ui.node(root, W, 96, 0, toolsY);
+        const flagBtn = Ui.candyBtn(tools, 300, 96, '🚩 挖掘模式', [C.blueH, C.blue, C.blueD], {
+            x: 0, fontSize: 30,
+            onClick: () => {
+                flagMode = !flagMode;
+                const lb = findBtnLabel(flagBtn);
+                if (lb) lb.string = flagMode ? '🚩 插旗模式' : '🚩 挖掘模式';
+                paintFlagBtn();
+                Modal.toast(flagMode ? '🚩 插旗模式：点格子插旗' : '⛏️ 挖掘模式：点格子翻开');
+            },
+        });
+        const paintFlagBtn = () => {
+            const c: [string, string, string] = flagMode ? [C.goldH, C.gold, C.goldD] : [C.blueH, C.blue, C.blueD];
+            const bodyG = flagBtn.children[0].getComponent(Graphics)!;
+            bodyG.clear();
+            Ui.rr(bodyG, 300, 96, 30, c[2]);
+            const mainG = flagBtn.children[1].getComponent(Graphics)!;
+            mainG.clear();
+            Ui.rr(mainG, 300, 88, 30, c[1]);
+            const lb = findBtnLabel(flagBtn);
+            if (lb) lb.string = flagMode ? '🚩 插旗模式' : '🚩 挖掘模式';
+        };
     }
 
     function drawStar() {
@@ -733,7 +891,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                     Modal.close();
                     if (hasNext) {
                         const nl = Config.getLevel(ctx!.ci!, ctx!.li! + 1);   // 下一关同样走关卡表
-                        Router.go('game', {
+                        // 用 replace 而非 go：导航栈不累积 game 层，暂停退出直接回章节地图
+                        Router.replace('game', {
                             from: 'level', ci: ctx!.ci, li: ctx!.li! + 1,
                             gid: nl.game,
                         } as GameCtx);
@@ -748,8 +907,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         setTimer(checkAchievements, 1600);
     }
 
-    /** 失败结算：仅主动认输触发（超时/错误只扣星，不提前结束） */
-    function failGame(reason: string) {
+    /** 失败结算：踩雷（扫雷）/ 主动认输（数独） */
+    function failGame(reason: string, errCount?: number) {
         if (st.finished) return;
         st.finished = true;
         st.paused = true;
@@ -759,7 +918,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             Ui.bob(ic, 8, 2.4);
             Ui.label(p, ctx!.from === 'level' ? '闯关失败' : '挑战失败', { size: 44, y: 70 });
             Ui.label(p, reason, { size: 24, color: C.inkSoft, y: 15 });
-            if (cfg) Ui.label(p, `错误 ${su.errors} 次 · 用时 ${fmtTime(st.sec)}`, { size: 22, color: C.inkSoft, y: -30 });
+            const errText = errCount != null ? `错误 ${errCount} 次 · ` : '';
+            Ui.label(p, `${errText}用时 ${fmtTime(st.sec)}`, { size: 22, color: C.inkSoft, y: -30 });
             Ui.candyBtn(p, 220, 90, '再 来 一 次', [C.greenH, C.green, C.greenD], {
                 x: -125, y: -170, fontSize: 28,
                 onClick: () => { Modal.close(); Router.replace('game', ctx); },

@@ -1,0 +1,5 @@
+[
+    { "id": "mine_easy",   "board": 8,  "mines": 8,  "difficulty": "简单", "timeCostStar": [120],           "rewardCoins": 30 },
+    { "id": "mine_normal", "board": 9,  "mines": 12, "difficulty": "普通", "timeCostStar": [180, 300],      "rewardCoins": 45 },
+    { "id": "mine_hard",   "board": 10, "mines": 16, "difficulty": "困难", "timeCostStar": [240, 360, 480], "rewardCoins": 60 }
+]

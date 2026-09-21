@@ -15,6 +15,17 @@ export interface SudokuCfg {
     rewardCoins: number;    // 通关金币奖励
 }
 
+/** 扫雷表行（assets/resources/config/mine.json）
+ *  踩雷立即失败结算，故无错误扣星字段；星级仅由超时阶梯决定。 */
+export interface MineCfg {
+    id: string;             // 唯一 id，如 mine_hard
+    board: number;          // 棋盘边长：board × board 格
+    mines: number;          // 雷数
+    difficulty: string;     // 难度：简单 / 普通 / 困难
+    timeCostStar: number[]; // 超时扣星阶梯（秒）
+    rewardCoins: number;    // 通关金币奖励
+}
+
 /** 关卡表行（assets/resources/config/level.json）
  *  在表里填一行即可把某关指定为某玩法的某配置 id：
  *  { "id": "L1-5", "chapter": 0, "level": 5, "game": "sudoku", "cfgId": "su_6_normal" }
@@ -34,22 +45,37 @@ const CHALLENGE_SUDOKU: Record<string, string> = {
     monthly: 'su_9_hard',
 };
 
+/** 挑战模式默认使用的扫雷配置 */
+const CHALLENGE_MINE: Record<string, string> = {
+    daily: 'mine_easy',
+    weekly: 'mine_normal',
+    monthly: 'mine_hard',
+};
+
 /** 数独配置加载失败时的兜底 */
 const FALLBACK_SUDOKU: SudokuCfg = {
     id: 'su_9_normal', type: 9, difficulty: '普通',
     timeCostStar: [120, 240, 360], errorCostStar: [3, 6, 9], holes: 42, rewardCoins: 60,
 };
 
+/** 扫雷配置加载失败时的兜底 */
+const FALLBACK_MINE: MineCfg = {
+    id: 'mine_normal', board: 9, mines: 12, difficulty: '普通',
+    timeCostStar: [180, 300], rewardCoins: 45,
+};
+
 class ConfigMgr {
     sudokuList: SudokuCfg[] = [];
+    mineList: MineCfg[] = [];
     levelList: LevelCfg[] = [];
     ready = false;
     private sudokuMap = new Map<string, SudokuCfg>();
+    private mineMap = new Map<string, MineCfg>();
     private levelMap = new Map<string, LevelCfg>();
 
     /** 在 Game.start 里调用（resources 异步加载） */
     load(cb?: () => void) {
-        let pending = 2;
+        let pending = 3;
         const done = () => { if (--pending === 0) { this.ready = true; if (cb) cb(); } };
         resources.load('config/sudoku', JsonAsset, (err, asset) => {
             if (!err && asset && Array.isArray(asset.json)) this.sudokuList = asset.json as SudokuCfg[];
@@ -57,6 +83,13 @@ class ConfigMgr {
             this.sudokuList.forEach(c => this.sudokuMap.set(c.id, c));
             if (this.sudokuList.length) console.log('[Config] 数独表加载', this.sudokuList.length, '行');
             else console.warn('[Config] 数独表为空或加载失败，使用兜底配置');
+            done();
+        });
+        resources.load('config/mine', JsonAsset, (err, asset) => {
+            if (!err && asset && Array.isArray(asset.json)) this.mineList = asset.json as MineCfg[];
+            this.mineMap.clear();
+            this.mineList.forEach(c => this.mineMap.set(c.id, c));
+            if (this.mineList.length) console.log('[Config] 扫雷表加载', this.mineList.length, '行');
             done();
         });
         resources.load('config/level', JsonAsset, (err, asset) => {
@@ -70,6 +103,10 @@ class ConfigMgr {
 
     getSudoku(id: string): SudokuCfg | null {
         return this.sudokuMap.get(id) || null;
+    }
+
+    getMine(id: string): MineCfg | null {
+        return this.mineMap.get(id) || null;
     }
 
     /** 章节关序 → 玩法与配置：关卡表行优先，未配置走默认轮换 */
@@ -96,8 +133,17 @@ class ConfigMgr {
         return CHALLENGE_SUDOKU[key] || 'su_9_normal';
     }
 
+    /** 挑战模式的扫雷配置 id */
+    getChallengeMineId(key: string): string {
+        return CHALLENGE_MINE[key] || 'mine_normal';
+    }
+
     getFallbackSudoku(): SudokuCfg {
         return { ...FALLBACK_SUDOKU };
+    }
+
+    getFallbackMine(): MineCfg {
+        return { ...FALLBACK_MINE };
     }
 }
 
