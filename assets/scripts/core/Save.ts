@@ -13,6 +13,7 @@ export interface SaveData {
     achvUnlocked: string[];
     challenge: Record<string, Record<ChKey, ChRec>>;
     playDays: number;
+    best: Record<string, number>;       // 玩法配置 id -> 最佳用时（秒），如 sudoku 表的 su_9_normal
 }
 
 const KEY = 'puzzlestar_v1';
@@ -26,6 +27,7 @@ const DEFAULT: SaveData = {
     achvUnlocked: [],
     challenge: {},
     playDays: 1,
+    best: {},
 };
 
 export const SAVE = {

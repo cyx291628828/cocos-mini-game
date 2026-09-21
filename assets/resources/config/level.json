@@ -1,1 +1,14 @@
-[]
+[
+    { "id": "L0-0",  "chapter": 0, "level": 0,  "game": "sudoku", "cfgId": "su_4_easy" },
+    { "id": "L0-1",  "chapter": 0, "level": 1,  "game": "sudoku", "cfgId": "su_4_easy" },
+    { "id": "L0-2",  "chapter": 0, "level": 2,  "game": "sudoku", "cfgId": "su_4_normal" },
+    { "id": "L0-3",  "chapter": 0, "level": 3,  "game": "sudoku", "cfgId": "su_4_hard" },
+    { "id": "L0-4",  "chapter": 0, "level": 4,  "game": "sudoku", "cfgId": "su_6_easy" },
+    { "id": "L0-5",  "chapter": 0, "level": 5,  "game": "sudoku", "cfgId": "su_6_normal" },
+    { "id": "L0-6",  "chapter": 0, "level": 6,  "game": "sudoku", "cfgId": "su_6_hard" },
+    { "id": "L0-7",  "chapter": 0, "level": 7,  "game": "sudoku", "cfgId": "su_9_easy" },
+    { "id": "L0-8",  "chapter": 0, "level": 8,  "game": "sudoku", "cfgId": "su_9_easy" },
+    { "id": "L0-9",  "chapter": 0, "level": 9,  "game": "sudoku", "cfgId": "su_9_normal" },
+    { "id": "L0-10", "chapter": 0, "level": 10, "game": "sudoku", "cfgId": "su_9_hard" },
+    { "id": "L0-11", "chapter": 0, "level": 11, "game": "sudoku", "cfgId": "su_9_hard" }
+]

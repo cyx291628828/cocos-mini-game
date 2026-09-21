@@ -1,4 +1,4 @@
-import { Node, Vec3, tween, Graphics, UIOpacity, Label } from 'cc';
+import { Node, Vec3, tween, Graphics, UIOpacity, Label, Color } from 'cc';
 import { Ui } from '../core/Ui';
 import { C, hex } from '../core/Const';
 import { Router } from '../core/Router';
@@ -40,62 +40,75 @@ export function buildGame(root: Node, ctx?: GameCtx) {
 
     const st = { sec: 0, paused: false, sel: -1, finished: false };
 
-    // 数独状态（failGame/超时回调共享）
+    // 数独状态（failGame/结算共享；星数不在局内维护，结算时按错误次数+用时计算）
     const su = {
         board: [] as number[],
         given: [] as boolean[],
         conflict: new Set<number>(),
+        notes: [] as Array<Set<number>>,   // 候选笔记：每格一个数字集合
         errors: 0,
-        stars: 3,
     };
-    // 数独侧注册的"计时变化"回调（tick 触发，处理阶梯超时扣星）
-    let onTickStarCheck: (() => void) | null = null;
 
-    /* 顶栏 */
-    const top = Ui.node(root, W, 110, 0, H / 2 - 85);
-    Ui.circleBtn(top, 84, '⏸', { x: -W / 2 + 80, emojiSize: 40, onClick: openPause });
-    const info = Ui.panel(top, 360, 92, { x: 40, r: 24 });
-    Ui.label(info, ctx.from === 'level'
-        ? `${CHAPTERS[ctx.ci!].name} · 第 ${ctx.li! + 1} 关`
-        : `挑战模式 · ${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.tag ?? ''}`,
-        { size: 26, y: 14 });
-    Ui.label(info, cfg ? `${g.icon} ${g.name} · ${cfg.difficulty}` : `${g.icon} ${g.name}`,
-        { size: 22, color: C.inkSoft, y: -22 });
-    const timerPill = Ui.pill(top, 210, 72, { x: W / 2 - 135, bg: C.blue, edge: C.blueD });
-    const timerLb = Ui.label(timerPill, '⏱ 00:00', { size: 28, color: '#FFFFFF', y: 3 });
+    /* 顶栏（非数独玩法；数独使用参考图专属布局，见 buildSudoku） */
+    let timerLb: Label | null = null;
+    if (ctx.gid !== 'sudoku') {
+        const top = Ui.node(root, W, 110, 0, H / 2 - 85);
+        Ui.circleBtn(top, 84, '⏸', { x: -W / 2 + 80, emojiSize: 40, onClick: openPause });
+        const info = Ui.panel(top, 380, 92, { x: 50, r: 24 });
+        Ui.label(info, ctx.from === 'level'
+            ? `${CHAPTERS[ctx.ci!].name} · 第 ${ctx.li! + 1} 关`
+            : `挑战模式 · ${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.tag ?? ''}`,
+            { size: 26, y: 14 });
+        Ui.label(info, `${g.icon} ${g.name}`, { size: 22, color: C.inkSoft, y: -22 });
+        const timerPill = Ui.pill(top, 210, 72, { x: W / 2 - 140, bg: C.blue, edge: C.blueD });
+        Ui.emoji(timerPill, '⏱', 30, -68, 3);
+        timerLb = Ui.label(timerPill, '00:00', { size: 28, color: '#FFFFFF', x: 18, y: 3 });
+    }
 
-    /* 计时（数独：阶梯超时扣星在此判定） */
+    /* 计时（超时扣星为被动计算：结算时按用时重算，不会提前结算） */
     setTimer(() => {
         if (st.paused || st.finished) return;
         st.sec++;
-        timerLb.string = '⏱ ' + fmtTime(st.sec);
-        if (cfg && onTickStarCheck) onTickStarCheck();
+        if (timerLb) timerLb.string = fmtTime(st.sec);
     }, 1000, true);
-
-    /* 棋盘 */
-    const boardSize = Math.min(W - 90, ctx.gid === 'sudoku' ? 600 : 640);
-    const boardY = ctx.gid === 'sudoku' ? 10 : 50;
-    const sk = skinOf(SAVE.data.skin);
-    const board = Ui.node(root, boardSize + 36, boardSize + 36, 0, boardY);
-    const bg = Ui.gnode(board, boardSize + 36, boardSize + 36);
-    bg.g.fillColor = hex(sk.frame);
-    bg.g.roundRect(-(boardSize + 36) / 2, -(boardSize + 36) / 2, boardSize + 36, boardSize + 36, 26);
-    bg.g.fill();
-    bg.g.strokeColor = hex('#FFFFFF8C'); bg.g.lineWidth = 7;
-    bg.g.roundRect(-(boardSize + 30) / 2, -(boardSize + 30) / 2, boardSize + 30, boardSize + 30, 23);
-    bg.g.stroke();
-    board.setScale(0.7, 0.7, 1);
-    tween(board).delay(0.08).to(0.42, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
 
     const cells: Node[] = [];
     const cellLabels: Array<Label | null> = [];
     const cellGraphs: Graphics[] = [];
+    const notesBoxes: Node[] = [];
+    const sk = skinOf(SAVE.data.skin);
+    let boardSize = 600;
+    let board: Node = null!;
 
-    if (ctx.gid === 'sudoku' && cfg) buildSudoku(cfg);
-    else if (ctx.gid === 'mine') drawMine();
-    else if (ctx.gid === 'star') drawStar();
-    else if (ctx.gid === 'shikaku') drawShikaku();
-    else drawKillerLike();
+    if (ctx.gid === 'sudoku' && cfg) {
+        buildSudoku(cfg);
+    } else {
+        /* 非数独：棋盘 + 演示结算（规则后续接入） */
+        boardSize = Math.min(W - 90, 640);
+        const boardY = 50;
+        board = Ui.node(root, boardSize + 36, boardSize + 36, 0, boardY);
+        const bg = Ui.gnode(board, boardSize + 36, boardSize + 36);
+        bg.g.fillColor = hex(sk.frame);
+        bg.g.roundRect(-(boardSize + 36) / 2, -(boardSize + 36) / 2, boardSize + 36, boardSize + 36, 26);
+        bg.g.fill();
+        bg.g.strokeColor = hex('#FFFFFF8C'); bg.g.lineWidth = 7;
+        bg.g.roundRect(-(boardSize + 30) / 2, -(boardSize + 30) / 2, boardSize + 30, boardSize + 30, 23);
+        bg.g.stroke();
+        board.setScale(0.7, 0.7, 1);
+        tween(board).delay(0.08).to(0.42, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
+
+        if (ctx.gid === 'mine') drawMine();
+        else if (ctx.gid === 'star') drawStar();
+        else if (ctx.gid === 'shikaku') drawShikaku();
+        else drawKillerLike();
+
+        const toolbar = Ui.node(root, W, 120, 0, -H / 2 + 90);
+        Ui.candyBtn(toolbar, 460, 104, '▶ 演示通关结算', [C.greenH, C.green, C.greenD], {
+            y: 0, fontSize: 32, delay: 0.3,
+            onClick: () => finish(3, 30 + 3 * 10),
+        });
+        Ui.label(toolbar, '玩法规则后续接入 · 现为展示棋盘', { size: 20, color: C.inkSoft, y: -80 });
+    }
 
     /* ================= 数独（真实规则，配置驱动） ================= */
 
@@ -136,115 +149,241 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         };
         solve(0);
 
-        // 挖空
-        const idx = [...Array(N * N).keys()];
-        for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
-        const holesSet = new Set(idx.slice(0, Math.min(cfg.holes, N * N - N)));
+        // 挖空（唯一解保证）：按随机顺序逐格试探挖空，每挖一格用求解器验证解仍唯一，
+        // 多解则回填该格；固定种子 → 同关同题。实际挖空数 holesCount 可能略少于 cfg.holes。
+        const target = Math.min(cfg.holes, N * N - N);
+        const order = [...Array(N * N).keys()];
+        for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+        const puzzle = sol.slice();
+        let holesCount = 0;
+        // 数独求解器：数解的个数，数到 2 个即提前退出（limit 剪枝）
+        const countSolutions = (grid: number[], from: number): number => {
+            let pos = -1;
+            for (let i = from; i < N * N; i++) if (grid[i] === 0) { pos = i; break; }
+            if (pos < 0) return 1;
+            let count = 0;
+            for (let v = 1; v <= N; v++) {
+                let ok = true;
+                for (const j of peersAt[pos]) if (grid[j] === v) { ok = false; break; }
+                if (ok) {
+                    grid[pos] = v;
+                    count += countSolutions(grid, pos + 1);
+                    grid[pos] = 0;
+                    if (count >= 2) return count;
+                }
+            }
+            return count;
+        };
+        for (const i of order) {
+            if (holesCount >= target) break;
+            const keep = puzzle[i];
+            puzzle[i] = 0;
+            if (countSolutions(puzzle, 0) === 1) holesCount++;
+            else puzzle[i] = keep;
+        }
+        const holesSet = new Set(puzzle.map((v, i) => v === 0 ? i : -1).filter(i => i >= 0));
 
-        su.board = sol.map((v, i) => holesSet.has(i) ? 0 : v);
+        su.board = puzzle.map((v, i) => holesSet.has(i) ? 0 : v);
         su.given = [...Array(N * N)].map((_, i) => !holesSet.has(i));
+        su.notes = [...Array(N * N)].map(() => new Set<number>());
 
-        /* 星行（棋盘上方）：阶梯扣星实时变暗 */
-        const starRow = Ui.node(root, 300, 52, 0, boardY + boardSize / 2 + 52);
-        const starNodes: Node[] = [];
-        for (let i = 0; i < 3; i++) starNodes.push(Ui.emoji(starRow, '⭐', 44, (i - 1) * 58, 0));
-        const errLb = Ui.label(starRow, '', { size: 22, color: C.redD, x: 150 });
-        const timeoutLb = Ui.label(starRow, '', { size: 22, color: C.blueD, x: -150 });
+        /* ---------- 参考图布局：顶部信息卡 / 统计卡 / 格线棋盘 / 工具 / 胶囊键盘 ---------- */
 
-        /** 按阶梯数组重算剩余星：达到数组中各阈值各扣 1 星（超时 + 错误），扣光返回 0 */
-        const updateStars = (): number => {
+        // 布局（自底向上）
+        const padY = -H / 2 + 100;
+        const toolsY = padY + 122;
+        const topY = H / 2 - 105;
+        const statsY = topY - 137;
+        const boardTop = statsY - 70;
+        const boardBottom = toolsY + 58;
+        boardSize = Math.min(W - 70, 640, boardTop - boardBottom - 36);
+        const boardY = (boardTop + boardBottom) / 2;
+        const cs = boardSize / N;
+
+        /* 顶部信息卡：⏸ + 计时器 + 难度胶囊 + 关卡名 */
+        const topPanel = Ui.panel(root, W - 60, 150, { x: 0, y: topY, r: 26 });
+        const pw = (W - 60) / 2;
+        Ui.circleBtn(topPanel, 64, '⏸', { x: -pw + 52, emojiSize: 28, onClick: openPause });
+        timerLb = Ui.label(topPanel, '00:00', { size: 54, color: C.ink, x: -86, y: 20 });
+        Ui.label(topPanel, '计时器', { size: 20, color: C.inkSoft, x: -86, y: -30 });
+        const diffPill = Ui.pill(topPanel, 236, 62, { x: pw - 138, y: 28, bg: C.gold, edge: C.goldD });
+        Ui.label(diffPill, `难度 · ${cfg.difficulty}`, { size: 26, color: '#FFFFFF', y: 2 });
+        Ui.label(topPanel, ctx!.from === 'level'
+            ? `${CHAPTERS[ctx!.ci!].name} · 第 ${ctx!.li! + 1} 关`
+            : `挑战模式 · ${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.name ?? ''}`,
+            { size: 20, color: C.inkSoft, x: pw - 138, y: -28 });
+
+        /* 统计卡：错误次数 / 剩余空数 / 最佳时间（星数不在局内展示，结算时才展示最终星数） */
+        const cw = (W - 108) / 3;
+        const cardErr = Ui.panel(root, cw, 104, { x: -(cw + 12), y: statsY, r: 18 });
+        Ui.label(cardErr, '错误次数', { size: 20, color: C.inkSoft, y: 28 });
+        const errLb = Ui.label(cardErr, '0', { size: 32, color: C.ink, y: -16 });
+
+        const cardBlank = Ui.panel(root, cw, 104, { x: 0, y: statsY, r: 18 });
+        Ui.label(cardBlank, '剩余空数', { size: 20, color: C.inkSoft, y: 28 });
+        const blankLb = Ui.label(cardBlank, '', { size: 32, color: C.ink, y: -16 });
+
+        const cardBest = Ui.panel(root, cw, 104, { x: cw + 12, y: statsY, r: 18 });
+        Ui.label(cardBest, '最佳时间', { size: 20, color: C.inkSoft, y: 28 });
+        const bestSec = (SAVE.data.best || {})[cfg.id];
+        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 32, color: '#C89B3C', y: -16 });
+
+        /** 星级仅在结算时计算：3 − 超时达到阈值数 − 错误达到阈值数（最低 0） */
+        const calcStars = (): number => {
             const timeoutDed = cfg!.timeCostStar.filter(t => st.sec >= t).length;
             const errorDed = cfg!.errorCostStar.filter(e => su.errors >= e).length;
-            su.stars = Math.max(0, 3 - timeoutDed - errorDed);
-            starNodes.forEach((n, i) => {
-                const op = n.getComponent(UIOpacity) || n.addComponent(UIOpacity);
-                op.opacity = i < su.stars ? 255 : 70;
-                n.setScale(i < su.stars ? 1 : 0.82, i < su.stars ? 1 : 0.82, 1);
-            });
-            errLb.string = su.errors > 0 ? `错误 ${su.errors}` : '';
-            timeoutLb.string = timeoutDed > 0 ? '已超时' : '';
-            return su.stars;
+            return Math.max(0, 3 - timeoutDed - errorDed);
         };
-        // 计时每秒回调：超时阶梯扣星（可能触发失败）
-        onTickStarCheck = () => {
-            const s = updateStars();
-            if (s <= 0) failGame('超时后星数耗尽');
+        // 剩余空数（分母为实际挖空数：唯一解约束下可能略少于配置值）
+        const updateBlank = () => {
+            let left = 0;
+            for (let i = 0; i < N * N; i++) if (!su.given[i] && su.board[i] === 0) left++;
+            blankLb.string = `${left}/${holesCount}`;
         };
-        updateStars();
+        updateBlank();
 
-        /* 格子绘制 */
-        const cs = boardSize / N;
+        /* 棋盘：白金外框 + 米黄盘面 + 格线（宫粗线），数字位于格线之下层 */
+        board = Ui.node(root, boardSize + 30, boardSize + 30, 0, boardY);
+        const frame = Ui.gnode(board, boardSize + 30, boardSize + 30);
+        Ui.rr(frame.g, boardSize + 30, boardSize + 30, 20, '#C8A058');
+        const frameIn = Ui.gnode(board, boardSize + 22, boardSize + 22);
+        Ui.rr(frameIn.g, boardSize + 22, boardSize + 22, 16, sk.frame);
+        const face = Ui.gnode(board, boardSize + 12, boardSize + 12);
+        Ui.rr(face.g, boardSize + 12, boardSize + 12, 12, sk.cell);
+
+        // 格线层（先建 → 位于格子节点之下）
+        const lines = Ui.gnode(board, boardSize, boardSize);
+        const half = boardSize / 2;
+        lines.g.strokeColor = hex('#D8C49E');
+        lines.g.lineWidth = 2;
+        for (let k = 1; k < N; k++) {
+            if (k % boxR !== 0) { lines.g.moveTo(-half, half - k * cs); lines.g.lineTo(half, half - k * cs); }
+            if (k % boxC !== 0) { lines.g.moveTo(-half + k * cs, half); lines.g.lineTo(-half + k * cs, -half); }
+        }
+        lines.g.stroke();
+        lines.g.strokeColor = hex(sk.given, 230);
+        lines.g.lineWidth = 5;
+        for (let k = 1; k < N; k++) {
+            if (k % boxR === 0) { lines.g.moveTo(-half, half - k * cs); lines.g.lineTo(half, half - k * cs); }
+            if (k % boxC === 0) { lines.g.moveTo(-half + k * cs, half); lines.g.lineTo(-half + k * cs, -half); }
+        }
+        lines.g.stroke();
+        lines.g.strokeColor = hex(sk.given);
+        lines.g.lineWidth = 6;
+        lines.g.roundRect(-half, -half, boardSize, boardSize, 6);
+        lines.g.stroke();
+
+        /* 格子（透明命中区 + 高亮底色），参考图风格：平时无底色 */
         const redrawAll = () => { for (let i = 0; i < N * N; i++) redrawCell(i); };
         const redrawCell = (i: number) => {
             const cg = cellGraphs[i];
-            const r = Math.floor(i / N), c = i % N;
             cg.clear();
             const sz = cs - 6;
-            const alt = (Math.floor(r / boxR) + Math.floor(c / boxC)) % 2;
-            let fillC = alt ? sk.cellAlt : sk.cell;
-            if (su.conflict.has(i)) fillC = '#FFB3B3';
-            else if (st.sel >= 0 && (i === st.sel || peersAt[st.sel].includes(i))) fillC = sk.hi;
-            Ui.rr(cg, sz, sz, 8, fillC);
-            if (i === st.sel) {
-                cg.strokeColor = hex('#FF9F1C');
-                cg.lineWidth = 4;
-                cg.roundRect(-sz / 2 + 2, -sz / 2 + 2, sz - 4, sz - 4, 7);
-                cg.stroke();
+            let fillC: string | Color | null = null;
+            if (su.conflict.has(i)) fillC = '#FFC2C2';
+            else if (st.sel === i) fillC = '#FFE9A8';
+            else if (st.sel >= 0 && peersAt[st.sel].includes(i)) fillC = hex(sk.hi, 90);
+            if (fillC) {
+                Ui.rr(cg, sz, sz, 8, fillC);
+                if (st.sel === i) {
+                    cg.strokeColor = hex('#F0A83C');
+                    cg.lineWidth = 3;
+                    cg.roundRect(-sz / 2 + 2, -sz / 2 + 2, sz - 4, sz - 4, 7);
+                    cg.stroke();
+                }
             }
             const lb = cellLabels[i]!;
             const v = su.board[i];
             lb.string = v ? String(v) : '';
-            lb.color = hex(su.given[i] ? sk.given : (su.conflict.has(i) ? '#C03030' : sk.user));
+            lb.color = hex(su.given[i] ? sk.given : (su.conflict.has(i) ? '#D04848' : sk.user));
+
+            // 候选笔记：空格时按宫格布局渲染小数字
+            const box = notesBoxes[i];
+            box.destroyAllChildren();
+            if (v === 0 && su.notes[i] && su.notes[i].size) {
+                const arr = [...su.notes[i]].sort((a, b) => a - b);
+                arr.forEach(nv => {
+                    const row = Math.floor((nv - 1) / boxC), col = (nv - 1) % boxC;
+                    const lx = (col - (boxC - 1) / 2) * cs * 0.3;
+                    const ly = ((boxR - 1) / 2 - row) * cs * 0.3;
+                    Ui.label(box, String(nv), { size: cs * 0.24, color: '#8A7A5E', x: lx, y: ly, bold: false });
+                });
+            }
         };
 
         eachCell(N, (i, x, y) => {
-            const holder = Ui.node(board, cs - 6, cs - 6, x, y);
-            const cg = Ui.gnode(holder, cs - 6, cs - 6);
+            const holder = Ui.node(board, cs, cs, x, y);
+            const cg = Ui.gnode(holder, cs, cs);
             cells.push(holder);
             cellGraphs.push(cg.g);
-            cellLabels.push(Ui.label(holder, '', { size: cs * 0.55, color: sk.user }));
+            cellLabels.push(Ui.label(holder, '', { size: cs * 0.52, color: sk.user }));
+            notesBoxes.push(Ui.node(holder, cs, cs));   // 候选笔记层（数字之上）
             if (holesSet.has(i)) {
                 Ui.bindTap(holder, () => { if (!st.finished) { st.sel = i; redrawAll(); } });
             }
         });
         redrawAll();
 
-        /* 数字键盘（N 个键 + 剩余计数） */
-        const padY = boardY - boardSize / 2 - 84;
-        const pad = Ui.node(root, W - 60, 128, 0, padY);
-        const slot = (W - 100) / N;
-        const keys: Array<{ g: Graphics; cntLb: Label }> = [];
-        const paintKey = (k: { g: Graphics; cntLb: Label }, v: number) => {
-            const kw = Math.min(slot - 8, 120);
-            k.g.clear();
-            Ui.rr(k.g, kw, 124, 18, C.panelDark);
-            Ui.rr(k.g, kw - 4, 116, 16, C.panel);
-            k.g.strokeColor = hex(C.panelLine); k.g.lineWidth = 3;
-            k.g.roundRect(-(kw - 2) / 2 + 1, -56, kw - 6, 113, 15);
-            k.g.stroke();
+        /* 数字键盘：胶囊键 + 右下剩余小数字 */
+        const pad = Ui.node(root, W - 80, 110, 0, padY);
+        const slot = (W - 96) / N;
+        const keys: Array<{ g: Graphics; numLb: Label; cntLb: Label }> = [];
+        const paintKey = (k: { g: Graphics; numLb: Label; cntLb: Label }, v: number) => {
+            const kw = Math.min(slot - 8, 110);
             const used = su.board.filter(x => x === v).length;
-            k.cntLb.string = '剩 ' + Math.max(0, N - used);
-            k.cntLb.color = hex(N - used <= 0 ? '#B9AE96' : C.inkSoft);
+            const left = Math.max(0, N - used);
+            const done = left <= 0;
+            k.g.clear();
+            Ui.rr(k.g, kw, 104, 28, '#E2D4B0');
+            Ui.rr(k.g, kw - 6, 98, 25, C.panel);
+            k.g.strokeColor = hex(done ? '#D8CDB4' : C.panelLine);
+            k.g.lineWidth = 2.5;
+            k.g.roundRect(-(kw - 6) / 2 + 1, -48, kw - 8, 95, 23);
+            k.g.stroke();
+            k.numLb.color = hex(done ? '#C9BFA8' : C.ink);
+            k.cntLb.string = String(left);
+            k.cntLb.color = hex(done ? '#C9BFA8' : '#C89B3C');
         };
         for (let v = 1; v <= N; v++) {
             const kx = (v - 1 - (N - 1) / 2) * slot;
-            const key = Ui.node(pad, slot - 8, 128, kx, 0);
-            const kg = Ui.gnode(key, slot - 8, 128);
-            Ui.label(key, String(v), { size: Math.min(48, slot * 0.5), y: 12 });
-            const cntLb = Ui.label(key, '剩 ' + N, { size: 18, color: C.inkSoft, y: -34 });
-            keys.push({ g: kg.g, cntLb });
+            const key = Ui.node(pad, slot - 8, 110, kx, 0);
+            const kg = Ui.gnode(key, slot - 8, 110);
+            const numLb = Ui.label(key, String(v), { size: Math.min(46, slot * 0.46), y: 4 });
+            const kw2 = Math.min(slot - 8, 110);
+            const cntLb = Ui.label(key, String(N), { size: 20, color: '#C89B3C', x: kw2 / 2 - 20, y: -30 });
+            keys.push({ g: kg.g, numLb, cntLb });
             const vv = v;
             Ui.bindTap(key, () => fill(vv));
             paintKey(keys[v - 1], v);
         }
         const repaintKeys = () => { for (let v = 1; v <= N; v++) paintKey(keys[v - 1], v); };
 
-        /* 工具行（提示 / 擦除 / 认输） */
-        const toolsY = padY - 104;
-        const tools = Ui.node(root, W, 100, 0, toolsY);
+        /* 工具行：候选 / 提示 / 擦除 */
+        const tools = Ui.node(root, W, 96, 0, toolsY);
+        const bw = (W - 128) / 3;
         let hints = 3;
-        const hintBtn = Ui.candyBtn(tools, 214, 88, '💡 提示 ×3', [C.goldH, C.gold, C.goldD], {
-            x: -230, fontSize: 26,
+        let noteMode = false;
+        const noteBtn = Ui.candyBtn(tools, bw, 96, '✏ 候选', [C.greenH, C.green, C.greenD], {
+            x: -(bw + 14), fontSize: 30,
+            onClick: () => {
+                noteMode = !noteMode;
+                paintNoteBtn();
+                Modal.toast(noteMode ? '✏️ 候选模式：点数字记录笔记' : '已退出候选模式');
+            },
+        });
+        const paintNoteBtn = () => {
+            const c: [string, string, string] = noteMode ? [C.blueH, C.blue, C.blueD] : [C.greenH, C.green, C.greenD];
+            const bodyG = noteBtn.children[0].getComponent(Graphics)!;
+            bodyG.clear();
+            Ui.rr(bodyG, bw, 96, 30, c[2]);
+            const mainG = noteBtn.children[1].getComponent(Graphics)!;
+            mainG.clear();
+            Ui.rr(mainG, bw, 88, 30, c[1]);
+            const lb = findBtnLabel(noteBtn);
+            if (lb) lb.string = noteMode ? '✏ 候选中' : '✏ 候选';
+        };
+        const hintBtn = Ui.candyBtn(tools, bw, 96, '💡 提示', [C.goldH, C.gold, C.goldD], {
+            x: 0, fontSize: 30,
             onClick: () => {
                 if (st.finished) return;
                 if (hints <= 0) { Modal.toast('提示已用完，相信自己！💪'); return; }
@@ -252,57 +391,66 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                 if (!empties.length) return;
                 hints--;
                 const lb = findBtnLabel(hintBtn);
-                if (lb) lb.string = `💡 提示 ×${hints}`;
+                if (lb) lb.string = `💡 提示`;
                 const i = empties[Math.floor(Math.random() * empties.length)];
                 su.board[i] = sol[i];
                 st.sel = -1;
                 afterFill(i);
             },
         });
-        Ui.candyBtn(tools, 214, 88, '🧽 擦 除', ['#FFFFFF', '#F3E3BB', C.panelDark], {
-            x: 0, fontSize: 26,
+        Ui.candyBtn(tools, bw, 96, '🧽 擦除', [C.pinkH, C.pink, C.pinkD], {
+            x: bw + 14, fontSize: 30,
             onClick: () => {
                 if (st.finished || st.sel < 0) { if (st.sel < 0 && !st.finished) Modal.toast('先选择一个空格子'); return; }
                 if (su.given[st.sel]) return;
                 su.board[st.sel] = 0;
+                su.notes[st.sel].clear();
                 st.sel = -1;
                 recomputeConflicts();
                 redrawAll();
                 repaintKeys();
+                updateBlank();
             },
         });
-        Ui.candyBtn(tools, 214, 88, '🏳️ 认 输', ['#E8E0CE', '#CFC8B8', '#948C7C'], {
-            x: 230, fontSize: 26,
-            onClick: () => failGame('主动认输'),
-        });
 
-        /* 填入 / 冲突 / 胜负 */
+        /* 填入 / 候选笔记 / 冲突 / 胜负 */
         function fill(v: number) {
             if (st.finished || st.sel < 0) { if (st.sel < 0 && !st.finished) Modal.toast('先选择一个空格子'); return; }
             const i = st.sel;
-            if (su.given[i] || su.board[i] === v) return;
+            if (su.given[i]) return;
+            // 候选模式：在空格上记/删笔记，不影响正式填写
+            if (noteMode) {
+                if (su.board[i] > 0) { Modal.toast('该格已填数字，擦除后才能记候选'); return; }
+                if (su.notes[i].has(v)) su.notes[i].delete(v); else su.notes[i].add(v);
+                redrawCell(i);
+                return;
+            }
+            if (su.board[i] === v) return;
             su.board[i] = v;
             afterFill(i);
         }
         function afterFill(changed: number) {
+            // 清本格笔记，并移除同行/列/宫相关格的该数字笔记
+            su.notes[changed].clear();
+            for (const j of peersAt[changed]) su.notes[j].delete(su.board[changed]);
             recomputeConflicts();
             redrawAll();
             repaintKeys();
+            updateBlank();
             if (su.conflict.has(changed)) {
-                // 本次填入与同行/列/宫重复 → 计错误 + 明确提示
+                // 本次填入与同行/列/宫重复 → 计错误 + 明确提示（不提前结算，星星结算时统一算）
                 su.errors++;
+                errLb.string = String(su.errors);
+                errLb.color = hex('#D04848');
                 Ui.shake(cells[changed]);
                 Modal.toast(`冲突！${su.board[changed]} 在行/列/宫中重复`);
-                const stars = updateStars();
-                if (stars <= 0) { failGame('错误次数过多，星数耗尽'); return; }
             } else if (su.board.every(x => x > 0)) {
-                // 填满：必须全盘无冲突才算通关
+                // 填满：必须全盘无冲突才算通关（星级此时才计算，可能 0 星）
                 if (su.conflict.size > 0) {
                     Modal.toast('已填满，但红色格子仍有冲突，改正后即可通关');
                 } else {
-                    const stars = updateStars();
-                    console.log('[Sudoku] 盘面完成 ✓ 星 =', stars);
-                    winGame(Math.max(1, stars));
+                    console.log('[Sudoku] 盘面完成 ✓ 星 =', calcStars());
+                    winGame();
                 }
             }
         }
@@ -316,10 +464,13 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                 }
             }
         }
-        function winGame(stars: number) {
+        function winGame() {
             if (st.finished) return;
             st.paused = true;
-            finish(stars, cfg!.rewardCoins);   // st.finished 由 finish 内部置位
+            // 记录最佳时间（按数独配置 id）
+            const best = SAVE.data.best || (SAVE.data.best = {});
+            if (!best[cfg.id] || st.sec < best[cfg.id]) best[cfg.id] = st.sec;
+            finish(calcStars(), cfg!.rewardCoins);   // st.finished 由 finish 内部置位
         }
     }
 
@@ -597,7 +748,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         setTimer(checkAchievements, 1600);
     }
 
-    /** 失败结算：星数耗尽 / 主动认输 */
+    /** 失败结算：仅主动认输触发（超时/错误只扣星，不提前结束） */
     function failGame(reason: string) {
         if (st.finished) return;
         st.finished = true;

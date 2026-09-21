@@ -242,22 +242,23 @@ export class Ui {
             ).start();
     }
 
-    /** 按钮流光 */
+    /** 按钮流光（Mask 裁剪在按钮内部） */
     static sheen(holder: Node, w: number, h: number) {
-        const bar = this.gnode(holder, w * 0.28, h * 1.6);
-        bar.g.fillColor = hex('#FFFFFF38');
-        bar.g.rect(-w * 0.14, -h * 0.8, w * 0.28, h * 1.6);
+        const bar = this.gnode(holder, w * 0.24, h);
+        bar.g.fillColor = hex('#FFFFFF30');
+        bar.g.roundRect(-w * 0.12, -h / 2, w * 0.24, h, w * 0.12);
         bar.g.fill();
-        bar.node.angle = 18;
-        bar.node.setPosition(-w * 0.9, 0);
+        bar.node.setPosition(-w / 2, 0);
+        const mask = holder.getComponent(Mask) || (holder.addComponent(Mask) as any);
+        mask.type = 0;   // MaskType.GRAPHICS_RECT：流光超出按钮的部分被裁掉
         const dur = 2.6 + Math.random() * 1.2;
         tween(bar.node)
             .delay(Math.random() * 2)
             .repeatForever(
                 tween(bar.node)
                     .delay(dur * 0.55)
-                    .to(dur * 0.3, { position: new Vec3(w * 0.9, 0, 0) }, { easing: 'sineInOut' })
-                    .call(() => bar.node.setPosition(-w * 0.9, 0, 0))
+                    .to(dur * 0.3, { position: new Vec3(w / 2, 0, 0) }, { easing: 'sineInOut' })
+                    .call(() => bar.node.setPosition(-w / 2, 0, 0))
             ).start();
     }
 
