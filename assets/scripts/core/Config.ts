@@ -39,6 +39,16 @@ export interface StarCfg {
     rewardCoins: number;    // 通关金币奖励
 }
 
+/** 数方表行（assets/resources/config/shikaku.json）
+ *  玩家画矩形覆盖全盘，每矩形恰含一个数字且面积=数字；无失败路径，星级仅由超时阶梯决定。 */
+export interface ShikakuCfg {
+    id: string;             // 唯一 id，如 shikaku_hard
+    board: number;          // 棋盘边长：board × board 格
+    difficulty: string;     // 难度：简单 / 普通 / 困难
+    timeCostStar: number[]; // 超时扣星阶梯（秒）
+    rewardCoins: number;    // 通关金币奖励
+}
+
 /** 关卡表行（assets/resources/config/level.json）
  *  在表里填一行即可把某关指定为某玩法的某配置 id：
  *  { "id": "L1-5", "chapter": 0, "level": 5, "game": "sudoku", "cfgId": "su_6_normal" }
@@ -72,6 +82,13 @@ const CHALLENGE_STAR: Record<string, string> = {
     monthly: 'star_hard',
 };
 
+/** 挑战模式默认使用的数方配置 */
+const CHALLENGE_SHIKAKU: Record<string, string> = {
+    daily: 'shikaku_easy',
+    weekly: 'shikaku_normal',
+    monthly: 'shikaku_hard',
+};
+
 /** 数独配置加载失败时的兜底 */
 const FALLBACK_SUDOKU: SudokuCfg = {
     id: 'su_9_normal', type: 9, difficulty: '普通',
@@ -90,20 +107,28 @@ const FALLBACK_STAR: StarCfg = {
     timeCostStar: [240, 420], rewardCoins: 45,
 };
 
+/** 数方配置加载失败时的兜底 */
+const FALLBACK_SHIKAKU: ShikakuCfg = {
+    id: 'shikaku_normal', board: 8, difficulty: '普通',
+    timeCostStar: [240, 420], rewardCoins: 45,
+};
+
 class ConfigMgr {
     sudokuList: SudokuCfg[] = [];
     mineList: MineCfg[] = [];
     starList: StarCfg[] = [];
+    shikakuList: ShikakuCfg[] = [];
     levelList: LevelCfg[] = [];
     ready = false;
     private sudokuMap = new Map<string, SudokuCfg>();
     private mineMap = new Map<string, MineCfg>();
     private starMap = new Map<string, StarCfg>();
+    private shikakuMap = new Map<string, ShikakuCfg>();
     private levelMap = new Map<string, LevelCfg>();
 
     /** 在 Game.start 里调用（resources 异步加载） */
     load(cb?: () => void) {
-        let pending = 4;
+        let pending = 5;
         const done = () => { if (--pending === 0) { this.ready = true; if (cb) cb(); } };
         resources.load('config/sudoku', JsonAsset, (err, asset) => {
             if (!err && asset && Array.isArray(asset.json)) this.sudokuList = asset.json as SudokuCfg[];
@@ -127,6 +152,13 @@ class ConfigMgr {
             if (this.starList.length) console.log('[Config] 星之战表加载', this.starList.length, '行');
             done();
         });
+        resources.load('config/shikaku', JsonAsset, (err, asset) => {
+            if (!err && asset && Array.isArray(asset.json)) this.shikakuList = asset.json as ShikakuCfg[];
+            this.shikakuMap.clear();
+            this.shikakuList.forEach(c => this.shikakuMap.set(c.id, c));
+            if (this.shikakuList.length) console.log('[Config] 数方表加载', this.shikakuList.length, '行');
+            done();
+        });
         resources.load('config/level', JsonAsset, (err, asset) => {
             if (!err && asset && Array.isArray(asset.json)) this.levelList = asset.json as LevelCfg[];
             this.levelMap.clear();
@@ -146,6 +178,10 @@ class ConfigMgr {
 
     getStar(id: string): StarCfg | null {
         return this.starMap.get(id) || null;
+    }
+
+    getShikaku(id: string): ShikakuCfg | null {
+        return this.shikakuMap.get(id) || null;
     }
 
     /** 挑战模式的数独配置 id */
@@ -173,6 +209,13 @@ class ConfigMgr {
 
     getFallbackStar(): StarCfg {
         return { ...FALLBACK_STAR };
+    }
+    getChallengeShikakuId(key: string): string {
+        return CHALLENGE_SHIKAKU[key] || 'shikaku_normal';
+    }
+
+    getFallbackShikaku(): ShikakuCfg {
+        return { ...FALLBACK_SHIKAKU };
     }
 
     /** 章节关序 → 玩法与配置：关卡表行优先，未配置走默认轮换 */

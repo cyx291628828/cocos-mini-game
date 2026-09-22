@@ -34,5 +34,17 @@
     { "id": "L2-8",  "chapter": 2, "level": 8,  "game": "star", "cfgId": "star_hard" },
     { "id": "L2-9",  "chapter": 2, "level": 9,  "game": "star", "cfgId": "star_hard" },
     { "id": "L2-10", "chapter": 2, "level": 10, "game": "star", "cfgId": "star_hard" },
-    { "id": "L2-11", "chapter": 2, "level": 11, "game": "star", "cfgId": "star_hard" }
+    { "id": "L2-11", "chapter": 2, "level": 11, "game": "star", "cfgId": "star_hard" },
+    { "id": "L3-0",  "chapter": 3, "level": 0,  "game": "shikaku", "cfgId": "shikaku_easy" },
+    { "id": "L3-1",  "chapter": 3, "level": 1,  "game": "shikaku", "cfgId": "shikaku_easy" },
+    { "id": "L3-2",  "chapter": 3, "level": 2,  "game": "shikaku", "cfgId": "shikaku_easy" },
+    { "id": "L3-3",  "chapter": 3, "level": 3,  "game": "shikaku", "cfgId": "shikaku_easy" },
+    { "id": "L3-4",  "chapter": 3, "level": 4,  "game": "shikaku", "cfgId": "shikaku_normal" },
+    { "id": "L3-5",  "chapter": 3, "level": 5,  "game": "shikaku", "cfgId": "shikaku_normal" },
+    { "id": "L3-6",  "chapter": 3, "level": 6,  "game": "shikaku", "cfgId": "shikaku_normal" },
+    { "id": "L3-7",  "chapter": 3, "level": 7,  "game": "shikaku", "cfgId": "shikaku_normal" },
+    { "id": "L3-8",  "chapter": 3, "level": 8,  "game": "shikaku", "cfgId": "shikaku_hard" },
+    { "id": "L3-9",  "chapter": 3, "level": 9,  "game": "shikaku", "cfgId": "shikaku_hard" },
+    { "id": "L3-10", "chapter": 3, "level": 10, "game": "shikaku", "cfgId": "shikaku_hard" },
+    { "id": "L3-11", "chapter": 3, "level": 11, "game": "shikaku", "cfgId": "shikaku_hard" }
 ]

@@ -5,10 +5,11 @@ import { Router } from '../core/Router';
 import { SAVE, addCoins, setTimer, fmtTime } from '../core/Save';
 import {
     GAMES, CHAPTERS, LEVELS_PER_CH, skinOf, mulberry32,
-    SHIKAKU_CLUES, SHIKAKU_RECTS, CH_PERIODS, GameCtx,
+    CH_PERIODS, GameCtx,
 } from '../core/Data';
-import { Config, SudokuCfg, MineCfg, StarCfg } from '../core/Config';
+import { Config, SudokuCfg, MineCfg, StarCfg, ShikakuCfg } from '../core/Config';
 import { genStarPuzzle } from '../core/StarGen';
+import { genShikakuPuzzle } from '../core/ShikakuGen';
 import { Modal } from './ModalUI';
 import { confetti } from './Confetti';
 import { checkAchievements } from './Achievement';
@@ -27,22 +28,27 @@ export function buildGame(root: Node, ctx?: GameCtx) {
     let cfg: SudokuCfg | null = null;
     let mineCfg: MineCfg | null = null;
     let starCfg: StarCfg | null = null;
+    let shikakuCfg: ShikakuCfg | null = null;
     if (ctx.from === 'level') {
         const lv = Config.getLevel(ctx.ci!, ctx.li!);
         ctx.gid = lv.game;
         if (ctx.gid === 'sudoku') cfg = lv.cfgId ? Config.getSudoku(lv.cfgId) : null;
         if (ctx.gid === 'mine') mineCfg = lv.cfgId ? Config.getMine(lv.cfgId) : null;
         if (ctx.gid === 'star') starCfg = lv.cfgId ? Config.getStar(lv.cfgId) : null;
+        if (ctx.gid === 'shikaku') shikakuCfg = lv.cfgId ? Config.getShikaku(lv.cfgId) : null;
     } else if (ctx.gid === 'sudoku') {
         cfg = Config.getSudoku(Config.getChallengeSudokuId(ctx.challengeKey || 'daily'));
     } else if (ctx.gid === 'mine') {
         mineCfg = Config.getMine(Config.getChallengeMineId(ctx.challengeKey || 'daily'));
     } else if (ctx.gid === 'star') {
         starCfg = Config.getStar(Config.getChallengeStarId(ctx.challengeKey || 'daily'));
+    } else if (ctx.gid === 'shikaku') {
+        shikakuCfg = Config.getShikaku(Config.getChallengeShikakuId(ctx.challengeKey || 'daily'));
     }
     if (ctx.gid === 'sudoku' && !cfg) cfg = Config.getFallbackSudoku();
     if (ctx.gid === 'mine' && !mineCfg) mineCfg = Config.getFallbackMine();
     if (ctx.gid === 'star' && !starCfg) starCfg = Config.getFallbackStar();
+    if (ctx.gid === 'shikaku' && !shikakuCfg) shikakuCfg = Config.getFallbackShikaku();
 
     const W = Ui.W(), H = Ui.H();
     const g = GAMES[ctx.gid];
@@ -119,9 +125,10 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         buildMine(mineCfg);
     } else if (ctx.gid === 'star' && starCfg) {
         buildStarBattle(starCfg);
+    } else if (ctx.gid === 'shikaku' && shikakuCfg) {
+        buildShikaku(shikakuCfg);
     } else {
         /* 其他玩法：棋盘 + 演示结算（规则后续接入） */
-        /* 非数独：棋盘 + 演示结算（规则后续接入） */
         boardSize = Math.min(W - 90, 640);
         const boardY = 50;
         board = Ui.node(root, boardSize + 36, boardSize + 36, 0, boardY);
@@ -135,8 +142,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         board.setScale(0.7, 0.7, 1);
         tween(board).delay(0.08).to(0.42, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
 
-        if (ctx.gid === 'shikaku') drawShikaku();
-        else drawKillerLike();
+        drawKillerLike();
 
         const toolbar = Ui.node(root, W, 120, 0, -H / 2 + 90);
         Ui.candyBtn(toolbar, 460, 104, '▶ 演示通关结算', [C.greenH, C.green, C.greenD], {
@@ -542,6 +548,13 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             const r = Math.floor(i / grid), c = i % grid;
             cb(i, -boardSize / 2 + cs / 2 + c * cs, boardSize / 2 - cs / 2 - r * cs, cs);
         }
+    }
+
+    /** 触点 UI 坐标 → 节点本地坐标（补 z=0，避免 Vec2 缺 z 导致 NaN） */
+    function uiToLocal(node: Node, loc: { x: number; y: number; z?: number }): { x: number; y: number } {
+        const ut = node.getComponent(UITransform)!;
+        const local = ut.convertToNodeSpaceAR(new Vec3(loc.x, loc.y, loc.z ?? 0));
+        return { x: local.x, y: local.y };
     }
 
     function drawKillerLike() {
@@ -962,22 +975,40 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                 checkWin();
             });
         });
-        // 滑动批量排除：仅排除模式下生效——按住划过的空格统一标记为 ✕（放星格不受影响）
-        board.on(Node.EventType.TOUCH_MOVE, (e: any) => {
+        // 滑动批量排除：仅排除模式下生效——按住划过的空格统一标记为 ✕
+        // 统一挂 board（含 TOUCH_START），避免子 Label/命中节点导致 MOVE 不到 board
+        // 点按切换仍由 bindTap 处理；这里只负责“按住拖动涂过”
+        let starDrag = false;
+        let starPainted = false;
+        let starStartLoc: { x: number; y: number; z?: number } | null = null;
+        board.on(Node.EventType.TOUCH_START, (e: any) => {
             if (st.finished || !excludeMode) return;
-            const ut = board.getComponent(UITransform)!;
-            const loc = e.getUILocation();
-            const local = ut.convertToNodeSpaceAR(loc);
+            starDrag = true;
+            starPainted = false;
+            starStartLoc = { x: e.getUILocation().x, y: e.getUILocation().y };
+        });
+        board.on(Node.EventType.TOUCH_MOVE, (e: any) => {
+            if (st.finished || !excludeMode || !starDrag) return;
+            if (!starPainted && starStartLoc) {
+                markStarAt(starStartLoc);
+                starPainted = true;
+            }
+            markStarAt(e.getUILocation());
+        });
+        board.on(Node.EventType.TOUCH_END, () => { starDrag = false; starStartLoc = null; });
+        board.on(Node.EventType.TOUCH_CANCEL, () => { starDrag = false; starStartLoc = null; });
+        function markStarAt(loc: { x: number; y: number; z?: number }) {
+            const local = uiToLocal(board, loc);
             const c = Math.floor((local.x + boardSize / 2) / cs);
             const r = Math.floor((boardSize / 2 - local.y) / cs);
-            if (r < 0 || r >= N || c < 0 || c >= N) return;
+            if (!(r >= 0 && r < N && c >= 0 && c < N)) return;
             const i = r * N + c;
             if (cellState[i] === 0) {
                 cellState[i] = 2;
                 recount();
-                redrawAll();
+                redrawCell(i);
             }
-        });
+        }
         recount();
         redrawAll();
 
@@ -989,7 +1020,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             onClick: () => {
                 excludeMode = !excludeMode;
                 paintExBtn();
-                Modal.toast(excludeMode ? '✕ 排除模式：点格子标记排除' : '已退出排除模式');
+                Modal.toast(excludeMode ? '✕ 排除中：点按切换，按住拖动连续标 ✕' : '已退出排除模式');
             },
         });
         const paintExBtn = () => {
@@ -1012,7 +1043,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                 redrawAll();
             },
         });
-        Ui.label(tools, `点击格子循环：放星 ⭐ → 标记 ✕ → 清空（每行/列/区域各 ${K} 星，星不相邻）`, { size: 19, color: C.inkSoft, y: -76 });
+        Ui.label(tools, `点按循环：放星 ⭐ → 标记 ✕ → 清空；排除中可按住拖动连续标 ✕（每行/列/区域各 ${K} 星）`, { size: 19, color: C.inkSoft, y: -76 });
     }
 
     function neighborsOf(i: number, N: number): number[] {
@@ -1026,37 +1057,235 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         return out;
     }
 
-    function drawShikaku() {
-        const cs = boardSize / 10;
-        const rectColors = ['rgba(127,199,255,0.55)', 'rgba(255,178,120,0.55)', 'rgba(178,235,140,0.55)', 'rgba(255,150,190,0.55)', 'rgba(200,160,255,0.55)', 'rgba(255,230,120,0.55)', 'rgba(140,230,220,0.55)'];
-        const fills = new Array(100).fill(-1);
-        SHIKAKU_RECTS.forEach(([r0, c0, h, w], ri) => {
-            for (let k = 0; k < h * w; k++) {
-                const rr = r0 + Math.floor(k / w), cc = c0 + (k % w);
-                if (rr < 10 && cc < 10) fills[rr * 10 + cc] = ri;
-            }
-        });
-        eachCell(10, (i, x, y) => {
-            const r = Math.floor(i / 10), c = i % 10;
-            const holder = Ui.node(board, cs - 4, cs - 4, x, y);
-            const cg = Ui.gnode(holder, cs - 4, cs - 4);
-            Ui.rr(cg.g, cs - 4, cs - 4, 6, (r + c) % 2 ? sk.cellAlt : sk.cell);
-            const ri = fills[i];
-            if (ri >= 0) {
-                cg.g.fillColor = hex(rectColors[ri % rectColors.length]);
-                cg.g.roundRect(-(cs - 4) / 2, -(cs - 4) / 2, cs - 4, cs - 4, 6);
-                cg.g.fill();
-            }
-            const clue = SHIKAKU_CLUES[r + ',' + c];
-            if (clue) Ui.label(holder, String(clue), { size: cs * 0.5, color: sk.given });
+    /* ================= 数方（真实规则，配置驱动） ================= */
+
+    function buildShikaku(cfg: ShikakuCfg) {
+        const N = cfg.board;
+
+        // 出题（同步；固定种子 → 同关同题；失败换种子重试）
+        let seed = ctx!.from === 'level'
+            ? ctx!.ci! * 100 + ctx!.li!
+            : (ctx!.challengeKey === 'weekly' ? 71 : ctx!.challengeKey === 'monthly' ? 131 : 7);
+        let puzzle = genShikakuPuzzle(N, seed);
+        for (let t = 1; t <= 4 && !puzzle; t++) puzzle = genShikakuPuzzle(N, seed + t * 977);
+        if (!puzzle) {
+            Modal.open(box => {
+                const p = Ui.panel(box, 560, 420);
+                Ui.label(p, '⚠️ 本关题目生成异常', { size: 36, y: 60 });
+                Ui.label(p, '请退出后重试', { size: 24, color: C.inkSoft, y: 5 });
+                Ui.candyBtn(p, 220, 90, '退 出', [C.pinkH, C.pink, C.pinkD], { y: -100, fontSize: 30, onClick: () => { Modal.close(); Router.back(); } });
+            });
+            return;
+        }
+
+        /* 布局（同扫雷/星之战参考图结构） */
+        const toolsY = -H / 2 + 222;
+        const topY = H / 2 - 105;
+        const statsY = topY - 137;
+        const boardTop = statsY - 70;
+        const boardBottom = toolsY + 58;
+        boardSize = Math.min(W - 70, 640, boardTop - boardBottom - 36);
+        const boardY = (boardTop + boardBottom) / 2;
+        const cs = boardSize / N;
+
+        /* 统一顶栏：⏸（左） + 计时器（中） + 章节关卡卡（右） */
+        buildTopCard(topY);
+
+        /* 统计卡 3 张（右→左：最佳时间 / 难度 / 已覆盖格数） */
+        const cw = (W - 108) / 3;
+        const cardX = (pos: number) => (pos - 1) * (cw + 12);
+        // 最左：已覆盖格数
+        const cardCov = Ui.panel(root, cw, 104, { x: cardX(0), y: statsY, r: 18 });
+        Ui.label(cardCov, '已覆盖格数', { size: 20, color: C.inkSoft, y: 28 });
+        const covLb = Ui.label(cardCov, `0/${N * N}`, { size: 32, color: C.ink, y: -16 });
+        // 中间：难度（数方·N×N / 困难）
+        const cardDiff = Ui.panel(root, cw, 104, { x: cardX(1), y: statsY, r: 18 });
+        Ui.label(cardDiff, `数方·${N}×${N}`, { size: 19, color: C.inkSoft, y: 28 });
+        Ui.label(cardDiff, cfg.difficulty, { size: 26, color: C.ink, y: -16 });
+        // 最右：最佳时间
+        const cardBest = Ui.panel(root, cw, 104, { x: cardX(2), y: statsY, r: 18 });
+        Ui.label(cardBest, '最佳时间', { size: 20, color: C.inkSoft, y: 28 });
+        const bestSec = (SAVE.data.best || {})[cfg.id];
+        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 32, color: '#C89B3C', y: -16 });
+
+        /** 星级在结算时计算：数方无失败路径，仅按超时阶梯扣星 */
+        const calcStars = (): number => {
+            const timeoutDed = cfg!.timeCostStar.filter(t => st.sec >= t).length;
+            return Math.max(0, 3 - timeoutDed);
+        };
+
+        /* 状态 */
+        const owner = new Array(N * N).fill(-1);        // 每格矩形 id（-1 空）
+        const rects: Array<{ cells: number[]; numCell: number }> = [];
+        let covered = 0;
+        let dragFrom = -1;                              // 拖拽起点格（-1 无）
+        const previewCells = new Set<number>();
+        let previewValid = false;
+
+        const rectColors = [C.blueH, '#FFB278', '#B2EB8C', '#FF96BE', '#C8A0FF', '#FFE678', '#8CE6DC', '#A8C8F0', '#F0C8A8', '#C8F0A8'];
+
+        /* 棋盘：白金外框 + 深色盘面（格子描边清晰区分） */
+        board = Ui.node(root, boardSize + 30, boardSize + 30, 0, boardY);
+        const frame = Ui.gnode(board, boardSize + 30, boardSize + 30);
+        Ui.rr(frame.g, boardSize + 30, boardSize + 30, 20, '#C8A058');
+        const frameIn = Ui.gnode(board, boardSize + 22, boardSize + 22);
+        Ui.rr(frameIn.g, boardSize + 22, boardSize + 22, 16, sk.frame);
+        const face = Ui.gnode(board, boardSize + 12, boardSize + 12);
+        Ui.rr(face.g, boardSize + 12, boardSize + 12, 12, sk.frame);
+
+        const updateCovered = () => { covLb.string = `${covered}/${N * N}`; };
+
+        /* 格子绘制：未覆盖=浅底深描边，已覆盖=彩色块，拖拽预览=金/红 */
+        const redrawAll = () => { for (let i = 0; i < N * N; i++) redrawCell(i); };
+        const redrawCell = (i: number) => {
+            const cg = cellGraphs[i];
+            cg.clear();
+            const sz = cs - 6;
+            const inPreview = previewCells.has(i);
+            let fillC: string | Color = '#FFFFFF';
+            if (owner[i] >= 0) fillC = hex(rectColors[owner[i] % rectColors.length], 200);
+            else if (inPreview) fillC = hex(previewValid ? '#FFE9A8' : '#FFC2C2', 220);
+            Ui.rr(cg, sz, sz, 5, fillC);
+            cg.strokeColor = hex(owner[i] >= 0 ? '#FFFFFF' : '#C9A96A');
+            cg.lineWidth = 2;
+            cg.roundRect(-sz / 2 + 1, -sz / 2 + 1, sz - 2, sz - 2, 4);
+            cg.stroke();
+            const lb = cellLabels[i]!;
+            const num = puzzle.nums[i];
+            lb.string = num ? String(num) : '';
+            lb.color = hex(owner[i] >= 0 ? '#FFFFFF' : sk.given);
+        };
+
+        /* 拖拽：空格按下 → 实时预览矩形 → 松手校验（恰一数字且面积匹配）→ 应用 */
+        const rectBetween = (a: number, b: number) => {
+            const r0 = Math.min(Math.floor(a / N), Math.floor(b / N));
+            const r1 = Math.max(Math.floor(a / N), Math.floor(b / N));
+            const c0 = Math.min(a % N, b % N);
+            const c1 = Math.max(a % N, b % N);
+            const cells: number[] = [];
+            for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) cells.push(r * N + c);
+            return { cells };
+        };
+
+        /* 拖拽/点击全部由 board 统一处理（坐标换算，不依赖 cell 触摸冒泡） */
+        const cellAt = (loc: { x: number; y: number; z?: number }): number => {
+            const local = uiToLocal(board, loc);
+            const c = Math.floor((local.x + boardSize / 2) / cs);
+            const r = Math.floor((boardSize / 2 - local.y) / cs);
+            if (!(r >= 0 && r < N && c >= 0 && c < N)) return -1;
+            return r * N + c;
+        };
+
+        eachCell(N, (i, x, y) => {
+            const holder = Ui.node(board, cs, cs, x, y);
+            const cg = Ui.gnode(holder, cs, cs);
             cells.push(holder);
             cellGraphs.push(cg.g);
-            cellLabels.push(null);
-            Ui.bindTap(holder, () => {
-                holder.setScale(0.9, 0.9, 1);
-                tween(holder).to(0.2, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
-            });
+            cellLabels.push(Ui.label(holder, puzzle.nums[i] ? String(puzzle.nums[i]) : '', { size: cs * 0.5, color: sk.given }));
         });
+        redrawAll();   // 初始绘制全部格子（白底描边 + 数字）
+
+        // 拖拽起点（按下空格）与点击擦除（按下已覆盖格）
+        board.on(Node.EventType.TOUCH_START, (e: any) => {
+            if (st.finished) return;
+            const i = cellAt(e.getUILocation());
+            if (i < 0) return;
+            if (owner[i] >= 0) {
+                // 点击已覆盖格：擦除该矩形
+                const rectId = owner[i];
+                const rc = rects[rectId];
+                if (!rc) return;
+                rc.cells.forEach(ci => { owner[ci] = -1; });
+                covered -= rc.cells.length;
+                rects[rectId] = null as any;
+                updateCovered();
+                redrawAll();
+                return;
+            }
+            dragFrom = i;
+            previewCells.clear();
+            previewCells.add(i);
+            previewValid = true;
+            redrawAll();
+        });
+
+        // 实时预览（跟随手指）
+        board.on(Node.EventType.TOUCH_MOVE, (e: any) => {
+            if (dragFrom < 0 || st.finished) return;
+            const cur = cellAt(e.getUILocation());
+            if (cur < 0) return;
+            const rect = rectBetween(dragFrom, cur);
+            previewCells.clear();
+            previewValid = true;
+            let numsIn = 0, numCell = -1;
+            for (const i of rect.cells) {
+                previewCells.add(i);
+                if (owner[i] !== -1) previewValid = false;
+                if (puzzle.nums[i]) { numsIn++; numCell = i; }
+            }
+            if (numsIn !== 1 || puzzle.nums[numCell] !== rect.cells.length) previewValid = false;
+            redrawAll();
+        });
+
+        // 松手：应用或取消
+        board.on(Node.EventType.TOUCH_END, (e: any) => {
+            if (dragFrom < 0 || st.finished) { dragFrom = -1; previewCells.clear(); redrawAll(); return; }
+            const cells = [...previewCells];
+            const numsIn = cells.filter(i => puzzle.nums[i]).length;
+            if (previewValid && numsIn === 1) {
+                const rectId = rects.length;
+                cells.forEach(i => owner[i] = rectId);
+                rects.push({ cells, numCell: -1 });
+                covered += cells.length;
+                dragFrom = -1;
+                previewCells.clear();
+                updateCovered();
+                redrawAll();
+                checkWin();
+            } else {
+                dragFrom = -1;
+                previewCells.clear();
+                redrawAll();
+            }
+        });
+        board.on(Node.EventType.TOUCH_CANCEL, () => {
+            dragFrom = -1;
+            previewCells.clear();
+            redrawAll();
+        });
+
+        updateCovered();
+
+        /* 工具行：🧹 清除全部 */
+        const tools = Ui.node(root, W, 96, 0, toolsY);
+        Ui.candyBtn(tools, 300, 96, '🧹 清除全部', [C.blueH, C.blue, C.blueD], {
+            x: 0, fontSize: 30,
+            onClick: () => {
+                if (st.finished) return;
+                for (let i = 0; i < N * N; i++) owner[i] = -1;
+                rects.length = 0;
+                covered = 0;
+                updateCovered();
+                redrawAll();
+            },
+        });
+        Ui.label(tools, `按住空格拖拽画矩形（勿松手）：每个矩形恰好含一个数字，面积 = 数字`, { size: 19, color: C.inkSoft, y: -76 });
+
+        function checkWin() {
+            if (st.finished) return;
+            if (covered >= N * N) {
+                st.paused = true;
+                console.log('[Shikaku] 覆盖完成 ✓ 星 =', calcStars());
+                winGame();
+            }
+        }
+        function winGame() {
+            if (st.finished) return;
+            // st.finished 必须由 finish() 置位；若这里先 true，finish 会直接 return 导致无法结算
+            const best = SAVE.data.best || (SAVE.data.best = {});
+            if (!best[cfg.id] || st.sec < best[cfg.id]) best[cfg.id] = st.sec;
+            finish(calcStars(), cfg!.rewardCoins);
+        }
     }
 
     /* ================= 工具条（非数独玩法：演示结算） ================= */

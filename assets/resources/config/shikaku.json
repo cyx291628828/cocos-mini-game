@@ -1,0 +1,5 @@
+[
+    { "id": "shikaku_easy",   "board": 7,  "difficulty": "简单", "timeCostStar": [180],           "rewardCoins": 30 },
+    { "id": "shikaku_normal", "board": 8,  "difficulty": "普通", "timeCostStar": [240, 420],      "rewardCoins": 45 },
+    { "id": "shikaku_hard",   "board": 10, "difficulty": "困难", "timeCostStar": [300, 480, 600], "rewardCoins": 60 }
+]
