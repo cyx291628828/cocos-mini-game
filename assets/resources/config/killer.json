@@ -1,0 +1,29 @@
+[
+  {
+    "id": "killer_easy",
+    "difficulty": "简单",
+    "timeCostStar": [300, 500, 720],
+    "errorCostStar": [4, 8, 12],
+    "rewardCoins": 55,
+    "lives": 5,
+    "keyHint": true
+  },
+  {
+    "id": "killer_normal",
+    "difficulty": "普通",
+    "timeCostStar": [360, 600, 900],
+    "errorCostStar": [3, 6, 9],
+    "rewardCoins": 70,
+    "lives": 3,
+    "keyHint": true
+  },
+  {
+    "id": "killer_hard",
+    "difficulty": "困难",
+    "timeCostStar": [480, 720, 1080],
+    "errorCostStar": [2, 4, 6],
+    "rewardCoins": 90,
+    "lives": 3,
+    "keyHint": false
+  }
+]

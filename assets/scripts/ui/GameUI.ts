@@ -7,9 +7,10 @@ import {
     GAMES, CHAPTERS, LEVELS_PER_CH, skinOf, mulberry32,
     CH_PERIODS, GameCtx,
 } from '../core/Data';
-import { Config, SudokuCfg, MineCfg, StarCfg, ShikakuCfg } from '../core/Config';
+import { Config, SudokuCfg, MineCfg, StarCfg, ShikakuCfg, KillerCfg } from '../core/Config';
 import { genStarPuzzle } from '../core/StarGen';
 import { genShikakuPuzzle } from '../core/ShikakuGen';
+import { genKillerPuzzle, validateKillerBoard } from '../core/KillerGen';
 import { Modal } from './ModalUI';
 import { confetti } from './Confetti';
 import { checkAchievements } from './Achievement';
@@ -29,6 +30,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
     let mineCfg: MineCfg | null = null;
     let starCfg: StarCfg | null = null;
     let shikakuCfg: ShikakuCfg | null = null;
+    let killerCfg: KillerCfg | null = null;
     if (ctx.from === 'level') {
         const lv = Config.getLevel(ctx.ci!, ctx.li!);
         ctx.gid = lv.game;
@@ -36,6 +38,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         if (ctx.gid === 'mine') mineCfg = lv.cfgId ? Config.getMine(lv.cfgId) : null;
         if (ctx.gid === 'star') starCfg = lv.cfgId ? Config.getStar(lv.cfgId) : null;
         if (ctx.gid === 'shikaku') shikakuCfg = lv.cfgId ? Config.getShikaku(lv.cfgId) : null;
+        if (ctx.gid === 'killer') killerCfg = lv.cfgId ? Config.getKiller(lv.cfgId) : null;
     } else if (ctx.gid === 'sudoku') {
         cfg = Config.getSudoku(Config.getChallengeSudokuId(ctx.challengeKey || 'daily'));
     } else if (ctx.gid === 'mine') {
@@ -44,11 +47,14 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         starCfg = Config.getStar(Config.getChallengeStarId(ctx.challengeKey || 'daily'));
     } else if (ctx.gid === 'shikaku') {
         shikakuCfg = Config.getShikaku(Config.getChallengeShikakuId(ctx.challengeKey || 'daily'));
+    } else if (ctx.gid === 'killer') {
+        killerCfg = Config.getKiller(Config.getChallengeKillerId(ctx.challengeKey || 'daily'));
     }
     if (ctx.gid === 'sudoku' && !cfg) cfg = Config.getFallbackSudoku();
     if (ctx.gid === 'mine' && !mineCfg) mineCfg = Config.getFallbackMine();
     if (ctx.gid === 'star' && !starCfg) starCfg = Config.getFallbackStar();
     if (ctx.gid === 'shikaku' && !shikakuCfg) shikakuCfg = Config.getFallbackShikaku();
+    if (ctx.gid === 'killer' && !killerCfg) killerCfg = Config.getFallbackKiller();
 
     const W = Ui.W(), H = Ui.H();
     const g = GAMES[ctx.gid];
@@ -68,7 +74,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
 
     /* 顶栏（数独/扫雷/星之战使用参考图专属布局，见各自 build 函数） */
     let timerLb: Label | null = null;
-    if (ctx.gid !== 'sudoku' && ctx.gid !== 'mine' && ctx.gid !== 'star') {
+    if (ctx.gid !== 'sudoku' && ctx.gid !== 'mine' && ctx.gid !== 'star' && ctx.gid !== 'shikaku' && ctx.gid !== 'killer') {
         const top = Ui.node(root, W, 110, 0, H / 2 - 85);
         Ui.circleBtn(top, 84, '⏸', { x: -W / 2 + 80, emojiSize: 40, onClick: openPause });
         const info = Ui.panel(top, 380, 92, { x: 50, r: 24 });
@@ -127,6 +133,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         buildStarBattle(starCfg);
     } else if (ctx.gid === 'shikaku' && shikakuCfg) {
         buildShikaku(shikakuCfg);
+    } else if (ctx.gid === 'killer' && killerCfg) {
+        buildKiller(killerCfg);
     } else {
         /* 其他玩法：棋盘 + 演示结算（规则后续接入） */
         boardSize = Math.min(W - 90, 640);
@@ -538,6 +546,472 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             if (lb) return lb;
         }
         return null;
+    }
+
+    /* ================= 杀手数独（真实规则，配置驱动） ================= */
+
+    function buildKiller(cfg: KillerCfg) {
+        const N = 9;
+        const boxR = 3, boxC = 3;
+        const seed = ctx!.from === 'level'
+            ? ctx!.ci! * 100 + ctx!.li! + 55
+            : (ctx!.challengeKey === 'weekly' ? 71 : ctx!.challengeKey === 'monthly' ? 131 : 7);
+        const puzzle = genKillerPuzzle(seed * 7919 + 17);
+        const cages = puzzle.cages;
+        const cageOf = puzzle.cageOf;
+        const sol = puzzle.solution;
+
+        const peersAt: number[][] = [];
+        for (let i = 0; i < 81; i++) {
+            const r = Math.floor(i / 9), c = i % 9;
+            const set = new Set<number>();
+            for (let k = 0; k < 9; k++) { set.add(r * 9 + k); set.add(k * 9 + c); }
+            for (let dr = 0; dr < 3; dr++) for (let dc = 0; dc < 3; dc++) set.add((Math.floor(r / 3) * 3 + dr) * 9 + Math.floor(c / 3) * 3 + dc);
+            set.delete(i);
+            peersAt[i] = [...set];
+        }
+
+        su.board = new Array(81).fill(0);
+        su.given = new Array(81).fill(false);
+        su.notes = [...Array(81)].map(() => new Set<number>());
+        su.lives = cfg.lives;
+        su.errors = 0;
+
+        const padY = -H / 2 + 100;
+        const toolsY = padY + 134;
+        const topY = H / 2 - 105;
+        const statsY = topY - 137;
+        const boardTop = statsY - 70;
+        const boardBottom = toolsY + 58;
+        boardSize = Math.min(W - 70, 640, boardTop - boardBottom - 36);
+        const boardY = (boardTop + boardBottom) / 2;
+        const cs = boardSize / 9;
+
+        buildTopCard(topY);
+
+        const cw = (W - 108) / 4;
+        const cardX = (pos: number) => (pos - 1.5) * (cw + 12);
+        const cardBest = Ui.panel(root, cw, 104, { x: cardX(3), y: statsY, r: 18 });
+        Ui.label(cardBest, '最佳时间', { size: 19, color: C.inkSoft, y: 28 });
+        const bestSec = (SAVE.data.best || {})[cfg.id];
+        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 26, color: '#C89B3C', y: -16 });
+        const cardDiff = Ui.panel(root, cw, 104, { x: cardX(2), y: statsY, r: 18 });
+        Ui.label(cardDiff, '杀手数独', { size: 19, color: C.inkSoft, y: 28 });
+        Ui.label(cardDiff, cfg.difficulty, { size: 26, color: C.ink, y: -16 });
+        const cardBlank = Ui.panel(root, cw, 104, { x: cardX(1), y: statsY, r: 18 });
+        Ui.label(cardBlank, '剩余空数', { size: 19, color: C.inkSoft, y: 28 });
+        const blankLb = Ui.label(cardBlank, '81/81', { size: 26, color: C.ink, y: -16 });
+        const cardLife = Ui.panel(root, cw, 104, { x: cardX(0), y: statsY, r: 18 });
+        Ui.label(cardLife, '血量', { size: 19, color: C.inkSoft, y: 28 });
+        // 最多 5 颗心：按卡片宽度自适应间距/字号，避免溢出边框
+        const heartN = Math.min(5, Math.max(1, cfg.lives));
+        const heartNodes: Node[] = [];
+        {
+            const innerW = cw - 18;
+            const hSize = Math.min(30, Math.floor(innerW / heartN * 0.62), heartN >= 5 ? 22 : 28);
+            const gap = heartN > 1
+                ? (heartN >= 5
+                    ? Math.min(24, (innerW - hSize) / (heartN - 1))
+                    : Math.min(36, (innerW - hSize) / (heartN - 1)))
+                : 0;
+            for (let i = 0; i < heartN; i++) {
+                heartNodes.push(Ui.emoji(cardLife, '❤️', hSize, (i - (heartN - 1) / 2) * gap, -18));
+            }
+        }
+        const updateHearts = () => heartNodes.forEach((n, i) => {
+            const op = n.getComponent(UIOpacity) || n.addComponent(UIOpacity);
+            op.opacity = i < su.lives ? 255 : 55;
+        });
+        const updateBlank = () => {
+            let left = 0;
+            for (let i = 0; i < 81; i++) if (su.board[i] === 0) left++;
+            blankLb.string = `${left}/81`;
+        };
+        const calcStars = (): number => {
+            const timeoutDed = cfg!.timeCostStar.filter(t => st.sec >= t).length;
+            const errorDed = cfg!.errorCostStar.filter(e => su.errors >= e).length;
+            return Math.max(0, 3 - timeoutDed - errorDed);
+        };
+
+        board = Ui.node(root, boardSize + 30, boardSize + 30, 0, boardY);
+        const frame = Ui.gnode(board, boardSize + 30, boardSize + 30);
+        Ui.rr(frame.g, boardSize + 30, boardSize + 30, 20, '#C8A058');
+        const frameIn = Ui.gnode(board, boardSize + 22, boardSize + 22);
+        Ui.rr(frameIn.g, boardSize + 22, boardSize + 22, 16, sk.frame);
+        const face = Ui.gnode(board, boardSize + 12, boardSize + 12);
+        Ui.rr(face.g, boardSize + 12, boardSize + 12, 12, sk.cell);
+
+        // 格线：细格线 + 三宫粗线（笼框另画虚线，略缩进）
+        const lines = Ui.gnode(board, boardSize, boardSize);
+        const half = boardSize / 2;
+        const cellXY = (i: number) => {
+            const r = Math.floor(i / 9), c = i % 9;
+            return { x: -half + c * cs, y: half - r * cs };
+        };
+        lines.g.strokeColor = hex('#D8C49E');
+        lines.g.lineWidth = 1.8;
+        for (let k = 1; k < 9; k++) {
+            if (k % 3 !== 0) { lines.g.moveTo(-half, half - k * cs); lines.g.lineTo(half, half - k * cs); }
+            if (k % 3 !== 0) { lines.g.moveTo(-half + k * cs, half); lines.g.lineTo(-half + k * cs, -half); }
+        }
+        lines.g.stroke();
+        lines.g.strokeColor = hex('#2A2A2A');
+        lines.g.lineWidth = 6;
+        for (let k = 3; k < 9; k += 3) {
+            lines.g.moveTo(-half, half - k * cs); lines.g.lineTo(half, half - k * cs);
+            lines.g.moveTo(-half + k * cs, half); lines.g.lineTo(-half + k * cs, -half);
+        }
+        lines.g.stroke();
+        lines.g.strokeColor = hex('#1A1A1A');
+        lines.g.lineWidth = 6;
+        lines.g.roundRect(-half, -half, boardSize, boardSize, 4);
+        lines.g.stroke();
+
+        // 笼虚线按笼着色，dash 逻辑内联在 cages.forEach 中
+
+        // 笼虚线框：比格线缩进；每个笼一种颜色
+        const inset = 4.5;
+        const cageColors = [
+            '#7B5CFF', '#2ECC71', '#F39C12', '#E74C3C', '#1ABC9C', '#3498DB',
+            '#9B59B6', '#E67E22', '#16A085', '#C0392B', '#8E44AD', '#2980B9',
+        ];
+        {
+            cages.forEach((cage, ci) => {
+                const set = new Set(cage.cells);
+                const col = cageColors[ci % cageColors.length];
+                // 锚点：最上最左
+                let anchor = cage.cells[0];
+                for (const i of cage.cells) {
+                    const ar = Math.floor(anchor / 9), ac = anchor % 9;
+                    const r = Math.floor(i / 9), c = i % 9;
+                    if (r < ar || (r === ar && c < ac)) anchor = i;
+                }
+                const ap = cellXY(anchor);
+                // 笼和：贴在虚线左上「交点」上，虚线在数字宽度范围内预留缺口
+                const sumStr = String(cage.sum);
+                const sumW = Math.max(cs * 0.24, sumStr.length * cs * 0.14);
+                const sumH = cs * 0.2;
+                const jx = ap.x + inset;                       // 虚线左上交点
+                const jy = ap.y - inset;
+                const padCx = jx + sumW / 2 + 1;               // 数字中心（略入内）
+                const padCy = jy - sumH / 2 - 1;
+
+                const hMap = new Map<number, Array<{ x1: number; x2: number }>>();
+                const vMap = new Map<number, Array<{ y1: number; y2: number }>>();
+                const inCage = (r: number, c: number) => r >= 0 && r < 9 && c >= 0 && c < 9 && set.has(r * 9 + c);
+                // 网格角点四邻恰 3 格属本笼 → 笼的内凹角（qr,qc 为角点右下格）
+                const cornerConcave = (qr: number, qc: number) => {
+                    let n = 0;
+                    if (inCage(qr, qc)) n++;
+                    if (inCage(qr - 1, qc)) n++;
+                    if (inCage(qr, qc - 1)) n++;
+                    if (inCage(qr - 1, qc - 1)) n++;
+                    return n === 3;
+                };
+                for (const i of cage.cells) {
+                    const p = cellXY(i);
+                    const r = Math.floor(i / 9), c = i % 9;
+                    const addH = (y: number, x1: number, x2: number) => {
+                        const arr = hMap.get(y) || [];
+                        arr.push({ x1, x2 });
+                        hMap.set(y, arr);
+                    };
+                    const addV = (x: number, y1: number, y2: number) => {
+                        const arr = vMap.get(x) || [];
+                        arr.push({ y1, y2 });
+                        vMap.set(x, arr);
+                    };
+                    // 内凹角处：边端点向外延伸 2*inset，正好落在相交边的内缩线上，
+                    // 两条虚线在凹角自然相接（外凸角两端点本来就重合，不用处理）
+                    const ext = 2 * inset;
+                    const tl = cornerConcave(r, c), tr = cornerConcave(r, c + 1);
+                    const bl = cornerConcave(r + 1, c), br = cornerConcave(r + 1, c + 1);
+                    if (r === 0 || !set.has(i - 9)) addH(+(p.y - inset).toFixed(2), p.x + inset - (tl ? ext : 0), p.x + cs - inset + (tr ? ext : 0));
+                    if (r === 8 || !set.has(i + 9)) addH(+(p.y - cs + inset).toFixed(2), p.x + inset - (bl ? ext : 0), p.x + cs - inset + (br ? ext : 0));
+                    if (c === 0 || !set.has(i - 1)) addV(+(p.x + inset).toFixed(2), p.y - cs + inset - (bl ? ext : 0), p.y - inset + (tl ? ext : 0));
+                    if (c === 8 || !set.has(i + 1)) addV(+(p.x + cs - inset).toFixed(2), p.y - cs + inset - (br ? ext : 0), p.y - inset + (tr ? ext : 0));
+                }
+                const dashTo = (
+                    x1: number, y1: number, x2: number, y2: number,
+                    skip?: { a: number; b: number },   // 沿边距离区间：区间内预留（数字缺口）
+                ) => {
+                    const isH = Math.abs(y2 - y1) < 0.5;
+                    const len = Math.hypot(x2 - x1, y2 - y1);
+                    if (len < 1) return;
+                    const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+                    // 固定周期铺边（dash≈4.6 gap≈2.6）：所有边密度一致，无稀密不均
+                    const period = 7.2;
+                    const dash = period * 0.64;
+                    const n = Math.floor(len / period);
+                    const seg = (t0: number, t1: number) => {
+                        if (t1 - t0 < 0.8) return;
+                        lines.g.moveTo(x1 + ux * t0, y1 + uy * t0);
+                        lines.g.lineTo(x1 + ux * t1, y1 + uy * t1);
+                    };
+                    for (let k = 0; k <= n; k++) {
+                        const t0 = k * period;
+                        const t1 = Math.min(t0 + dash, len);
+                        if (t1 - t0 < 0.5) continue;
+                        if (!skip) { seg(t0, t1); continue; }
+                        // 与预留区间重叠的部分裁掉
+                        const s0 = Math.max(t0, skip.a), s1 = Math.min(t1, skip.b);
+                        if (s1 <= s0) { seg(t0, t1); continue; }
+                        if (t0 < s0) seg(t0, s0);
+                        if (t1 > s1) seg(s1, t1);
+                    }
+                };
+
+                lines.g.strokeColor = hex(col);
+                lines.g.lineWidth = 2.4;
+                for (const [y, segs] of hMap) {
+                    segs.sort((a, b) => a.x1 - b.x1);
+                    let cur = { ...segs[0] };
+                    const merged: typeof segs = [];
+                    for (let k = 1; k < segs.length; k++) {
+                        // 容差含 2*inset：补上相邻格端点各自缩进造成的缝，跨格虚线连通
+                        if (segs[k].x1 <= cur.x2 + 2 * inset + 2) cur.x2 = Math.max(cur.x2, segs[k].x2);
+                        else { merged.push(cur); cur = { ...segs[k] }; }
+                    }
+                    merged.push(cur);
+                    for (const s of merged) {
+                        // 锚点格顶边：避开笼和数字的 x 区间（虚线在数字处断开）
+                        if (Math.abs(y - (ap.y - inset)) < 0.5) {
+                            const ga = s.x1, gb = s.x2;
+                            const ca = padCx - sumW / 2 - 3, cb = padCx + sumW / 2 + 3;
+                            if (gb <= ca || ga >= cb) { dashTo(ga, y, gb, y); continue; }
+                            if (ga < ca) dashTo(ga, y, ca, y);
+                            if (gb > cb) dashTo(cb, y, gb, y);
+                        } else {
+                            dashTo(s.x1, y, s.x2, y);
+                        }
+                    }
+                }
+                for (const [x, segs] of vMap) {
+                    segs.sort((a, b) => a.y1 - b.y1);
+                    let cur = { ...segs[0] };
+                    const merged: typeof segs = [];
+                    for (let k = 1; k < segs.length; k++) {
+                        if (segs[k].y1 <= cur.y2 + 2 * inset + 2) cur.y2 = Math.max(cur.y2, segs[k].y2);
+                        else { merged.push(cur); cur = { ...segs[k] }; }
+                    }
+                    merged.push(cur);
+                    for (const s of merged) {
+                        // 锚点格左边：避开笼和数字的 y 区间（虚线在数字处断开）
+                        if (Math.abs(x - (ap.x + inset)) < 0.5) {
+                            const ga = s.y1, gb = s.y2;
+                            const ca = padCy - sumH / 2 - 2, cb = padCy + sumH / 2 + 2;
+                            if (gb <= ca || ga >= cb) { dashTo(x, ga, x, gb); continue; }
+                            if (ga < ca) dashTo(x, ga, x, ca);
+                            if (gb > cb) dashTo(x, cb, x, gb);
+                        } else {
+                            dashTo(x, s.y1, x, s.y2);
+                        }
+                    }
+                }
+                lines.g.stroke();
+
+                // 笼和：透明背景，数字贴在虚线缺口处
+                const padNode = Ui.node(board, sumW + 8, sumH + 4, padCx, padCy);
+                Ui.label(padNode, sumStr, { size: cs * 0.22, color: col, bold: true });
+            });
+        }
+
+        const redrawAll = () => { for (let i = 0; i < 81; i++) redrawCell(i); };
+        const redrawCell = (i: number) => {
+            const cg = cellGraphs[i];
+            cg.clear();
+            const sz = cs - 3;
+            const wrong = su.wrong.has(i);
+            const inSelCage = st.sel >= 0 && cageOf[st.sel] === cageOf[i];
+            let fillC: string | Color | null = null;
+            if (wrong) fillC = '#FFC2C2';
+            else if (st.sel === i) fillC = '#FFE9A8';
+            else if (inSelCage && st.sel !== i) fillC = hex('#FFF0B8', 130);
+            else if (st.sel >= 0 && peersAt[st.sel].includes(i)) fillC = hex(sk.hi, 70);
+            if (fillC) {
+                Ui.rr(cg, sz, sz, 4, fillC);
+                if (st.sel === i) {
+                    cg.strokeColor = hex('#E8A020');
+                    cg.lineWidth = 2.5;
+                    cg.roundRect(-sz / 2 + 1.5, -sz / 2 + 1.5, sz - 3, sz - 3, 4);
+                    cg.stroke();
+                }
+            }
+            const lb = cellLabels[i]!;
+            const v = su.board[i];
+            if (v) {
+                lb.string = String(v);
+                lb.color = hex(wrong ? '#D04848' : sk.user);
+            } else lb.string = '';
+            const box = notesBoxes[i];
+            box.destroyAllChildren();
+            if (v === 0 && su.notes[i] && su.notes[i].size) {
+                [...su.notes[i]].sort((a, b) => a - b).forEach(nv => {
+                    const row = Math.floor((nv - 1) / 3), col = (nv - 1) % 3;
+                    Ui.label(box, String(nv), {
+                        size: cs * 0.2, color: '#8A7A5E',
+                        x: (col - 1) * cs * 0.28, y: (1 - row) * cs * 0.28 - cs * 0.05, bold: false,
+                    });
+                });
+            }
+        };
+
+        eachCell(9, (i, x, y) => {
+            const holder = Ui.node(board, cs, cs, x, y);
+            const cg = Ui.gnode(holder, cs, cs);
+            cells.push(holder);
+            cellGraphs.push(cg.g);
+            // 填入数字居中偏下，给左上角笼和留空
+            const lb = Ui.label(holder, '', { size: cs * 0.46, color: sk.user, x: 0, y: -cs * 0.04 });
+            cellLabels.push(lb);
+            notesBoxes.push(Ui.node(holder, cs, cs));
+            Ui.bindTap(holder, () => {
+                if (st.finished) return;
+                st.sel = i; redrawAll(); repaintKeys();
+            });
+        });
+        redrawAll();
+
+        // 笼和已随各笼虚线绘制（见上方 cages.forEach）
+
+        const pad = Ui.node(root, W - 80, 110, 0, padY);
+        const slot = (W - 96) / 9;
+        const keys: Array<{ g: Graphics; numLb: Label; cntLb: Label }> = [];
+        const paintKey = (k: { g: Graphics; numLb: Label; cntLb: Label }, v: number, blocked: boolean) => {
+            const kw = Math.min(slot - 8, 110);
+            const used = su.board.filter(x => x === v).length;
+            const left = Math.max(0, 9 - used);
+            const done = left <= 0;
+            const dim = done || blocked;
+            k.g.clear();
+            Ui.rr(k.g, kw, 104, 28, '#E2D4B0');
+            Ui.rr(k.g, kw - 6, 98, 25, dim ? '#EDE6D4' : C.panel);
+            k.g.strokeColor = hex(dim ? '#D8CDB4' : C.panelLine);
+            k.g.lineWidth = 2.5;
+            k.g.roundRect(-(kw - 6) / 2 + 1, -48, kw - 8, 95, 23);
+            k.g.stroke();
+            k.numLb.color = hex(dim ? '#C9BFA8' : C.ink);
+            k.cntLb.string = String(left);
+            k.cntLb.color = hex(done ? '#C9BFA8' : '#C89B3C');
+        };
+        for (let v = 1; v <= 9; v++) {
+            const key = Ui.node(pad, slot - 8, 110, (v - 1 - 4) * slot, 0);
+            const kg = Ui.gnode(key, slot - 8, 110);
+            const numLb = Ui.label(key, String(v), { size: 46, y: 4 });
+            const cntLb = Ui.label(key, '9', { size: 18, color: '#C89B3C', y: -34 });
+            keys.push({ g: kg.g, numLb, cntLb });
+            Ui.bindTap(key, () => fill(v));
+        }
+        const repaintKeys = () => {
+            keys.forEach((k, vi) => {
+                const v = vi + 1;
+                let blocked = false;
+                if (cfg.keyHint && st.sel >= 0) {
+                    for (const j of peersAt[st.sel]) if (su.board[j] === v) { blocked = true; break; }
+                }
+                paintKey(k, v, blocked);
+            });
+        };
+        let noteMode = false;
+        let hints = 3;
+        const fill = (v: number) => {
+            if (st.finished || st.sel < 0) return;
+            const i = st.sel;
+            if (su.given[i]) return;
+            if (noteMode) {
+                if (su.notes[i].has(v)) su.notes[i].delete(v);
+                else su.notes[i].add(v);
+                redrawCell(i);
+                return;
+            }
+            su.board[i] = v;
+            su.notes[i].clear();
+            su.wrong.delete(i);
+            if (sol[i] !== v) {
+                su.wrong.add(i);
+                su.errors++;
+                su.lives = Math.max(0, su.lives - 1);
+                updateHearts();
+                Ui.shake(cells[i]);
+                if (su.lives <= 0) { setTimer(() => failGame('血量耗尽', su.errors), 400); }
+            }
+            updateBlank();
+            redrawAll();
+            repaintKeys();
+            checkWin();
+        };
+        // 工具：笔记 / 提示 / 擦除
+        const tools = Ui.node(root, W, 96, 0, toolsY);
+        const noteBtn = Ui.candyBtn(tools, 210, 88, '✏️ 笔记', [C.blueH, C.blue, C.blueD], {
+            x: -230, fontSize: 28,
+            onClick: () => {
+                noteMode = !noteMode;
+                paintNoteBtn(noteMode);
+                Modal.toast(noteMode ? '笔记模式：点数字写候选' : '普通填数模式');
+            },
+        });
+        const paintNoteBtn = (on: boolean) => {
+            const c: [string, string, string] = on ? [C.goldH, C.gold, C.goldD] : [C.blueH, C.blue, C.blueD];
+            const bodyG = noteBtn.children[0].getComponent(Graphics)!;
+            bodyG.clear();
+            Ui.rr(bodyG, 210, 88, 28, c[2]);
+            const mainG = noteBtn.children[1].getComponent(Graphics)!;
+            mainG.clear();
+            Ui.rr(mainG, 210, 80, 28, c[1]);
+            const lb = findBtnLabel(noteBtn);
+            if (lb) lb.string = on ? '✏️ 笔记中' : '✏️ 笔记';
+        };
+        Ui.candyBtn(tools, 210, 88, '💡 提示', [C.greenH, C.green, C.greenD], {
+            x: 0, fontSize: 28,
+            onClick: () => {
+                if (st.finished) return;
+                if (hints <= 0) { Modal.toast('提示已用完，相信自己！💪'); return; }
+                let i = st.sel;
+                if (i < 0 || (su.board[i] !== 0 && su.board[i] === sol[i])) {
+                    i = -1;
+                    for (let k = 0; k < 81; k++) if (su.board[k] !== sol[k]) { i = k; break; }
+                }
+                if (i < 0) { Modal.toast('已经全部填对啦'); return; }
+                hints--;
+                st.sel = i;
+                su.board[i] = sol[i];
+                su.notes[i].clear();
+                su.wrong.delete(i);
+                updateBlank(); redrawAll(); repaintKeys(); checkWin();
+                Modal.toast(`提示已填 1 格（剩余 ${hints} 次）`);
+            },
+        });
+        Ui.candyBtn(tools, 210, 88, '⌫ 擦除', [C.pinkH, C.pink, C.pinkD], {
+            x: 230, fontSize: 28,
+            onClick: () => {
+                if (st.finished || st.sel < 0) return;
+                const i = st.sel;
+                if (su.given[i]) return;
+                su.board[i] = 0;
+                su.wrong.delete(i);
+                su.notes[i].clear();
+                updateBlank(); redrawAll(); repaintKeys();
+            },
+        });
+
+        function checkWin() {
+            if (st.finished) return;
+            for (let i = 0; i < 81; i++) if (su.board[i] === 0) return;
+            if (su.wrong.size) return;
+            if (!validateKillerBoard(su.board, cages)) return;
+            st.paused = true;
+            console.log('[Killer] 杀手数独完成 ✓ 星 =', calcStars());
+            winGame();
+        }
+        function winGame() {
+            if (st.finished) return;
+            const best = SAVE.data.best || (SAVE.data.best = {});
+            if (!best[cfg.id] || st.sec < best[cfg.id]) best[cfg.id] = st.sec;
+            finish(calcStars(), cfg!.rewardCoins);
+        }
+        updateBlank();
+        updateHearts();
+        repaintKeys();
     }
 
     /* ================= 展示型棋盘（扫雷/星之战/数方/杀手） ================= */

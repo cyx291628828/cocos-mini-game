@@ -49,6 +49,18 @@ export interface ShikakuCfg {
     rewardCoins: number;    // 通关金币奖励
 }
 
+/** 杀手数独表行（assets/resources/config/killer.json）
+ *  9×9 数独 + 笼和；填错扣 ❤️，扣完失败。 */
+export interface KillerCfg {
+    id: string;             // 唯一 id，如 killer_hard
+    difficulty: string;     // 难度：简单 / 普通 / 困难
+    timeCostStar: number[]; // 超时扣星阶梯（秒）
+    errorCostStar: number[];// 错误扣星阶梯（次）
+    rewardCoins: number;    // 通关金币奖励
+    lives: number;          // 血量
+    keyHint: boolean;       // 键盘辅助
+}
+
 /** 关卡表行（assets/resources/config/level.json）
  *  在表里填一行即可把某关指定为某玩法的某配置 id：
  *  { "id": "L1-5", "chapter": 0, "level": 5, "game": "sudoku", "cfgId": "su_6_normal" }
@@ -89,6 +101,13 @@ const CHALLENGE_SHIKAKU: Record<string, string> = {
     monthly: 'shikaku_hard',
 };
 
+/** 挑战模式默认使用的杀手数独配置 */
+const CHALLENGE_KILLER: Record<string, string> = {
+    daily: 'killer_easy',
+    weekly: 'killer_normal',
+    monthly: 'killer_hard',
+};
+
 /** 数独配置加载失败时的兜底 */
 const FALLBACK_SUDOKU: SudokuCfg = {
     id: 'su_9_normal', type: 9, difficulty: '普通',
@@ -113,22 +132,31 @@ const FALLBACK_SHIKAKU: ShikakuCfg = {
     timeCostStar: [240, 420], rewardCoins: 45,
 };
 
+/** 杀手数独配置加载失败时的兜底 */
+const FALLBACK_KILLER: KillerCfg = {
+    id: 'killer_normal', difficulty: '普通',
+    timeCostStar: [360, 600], errorCostStar: [3, 6, 9],
+    rewardCoins: 70, lives: 3, keyHint: true,
+};
+
 class ConfigMgr {
     sudokuList: SudokuCfg[] = [];
     mineList: MineCfg[] = [];
     starList: StarCfg[] = [];
     shikakuList: ShikakuCfg[] = [];
+    killerList: KillerCfg[] = [];
     levelList: LevelCfg[] = [];
     ready = false;
     private sudokuMap = new Map<string, SudokuCfg>();
     private mineMap = new Map<string, MineCfg>();
     private starMap = new Map<string, StarCfg>();
     private shikakuMap = new Map<string, ShikakuCfg>();
+    private killerMap = new Map<string, KillerCfg>();
     private levelMap = new Map<string, LevelCfg>();
 
     /** 在 Game.start 里调用（resources 异步加载） */
     load(cb?: () => void) {
-        let pending = 5;
+        let pending = 6;
         const done = () => { if (--pending === 0) { this.ready = true; if (cb) cb(); } };
         resources.load('config/sudoku', JsonAsset, (err, asset) => {
             if (!err && asset && Array.isArray(asset.json)) this.sudokuList = asset.json as SudokuCfg[];
@@ -159,6 +187,14 @@ class ConfigMgr {
             if (this.shikakuList.length) console.log('[Config] 数方表加载', this.shikakuList.length, '行');
             done();
         });
+        resources.load('config/killer', JsonAsset, (err, asset) => {
+            if (!err && asset && Array.isArray(asset.json)) this.killerList = asset.json as KillerCfg[];
+            this.killerMap.clear();
+            this.killerList.forEach(c => this.killerMap.set(c.id, c));
+            if (this.killerList.length) console.log('[Config] 杀手表加载', this.killerList.length, '行');
+            else console.warn('[Config] 杀手表为空或加载失败，使用兜底配置');
+            done();
+        });
         resources.load('config/level', JsonAsset, (err, asset) => {
             if (!err && asset && Array.isArray(asset.json)) this.levelList = asset.json as LevelCfg[];
             this.levelMap.clear();
@@ -182,6 +218,10 @@ class ConfigMgr {
 
     getShikaku(id: string): ShikakuCfg | null {
         return this.shikakuMap.get(id) || null;
+    }
+
+    getKiller(id: string): KillerCfg | null {
+        return this.killerMap.get(id) || null;
     }
 
     /** 挑战模式的数独配置 id */
@@ -218,10 +258,23 @@ class ConfigMgr {
         return { ...FALLBACK_SHIKAKU };
     }
 
+    getChallengeKillerId(key: string): string {
+        return CHALLENGE_KILLER[key] || 'killer_normal';
+    }
+
+    getFallbackKiller(): KillerCfg {
+        return { ...FALLBACK_KILLER };
+    }
+
     /** 章节关序 → 玩法与配置：关卡表行优先，未配置走默认轮换 */
     getLevel(ci: number, li: number): { game: string; cfgId: string } {
         const hit = this.levelMap.get(ci + '-' + li);
         if (hit) return { game: hit.game, cfgId: hit.cfgId };
+        // 第五章（ci=4）整章杀手数独
+        if (ci === 4) {
+            const pool = ['killer_easy', 'killer_easy', 'killer_normal', 'killer_normal', 'killer_normal', 'killer_hard', 'killer_hard', 'killer_hard', 'killer_hard', 'killer_normal', 'killer_hard', 'killer_hard'];
+            return { game: 'killer', cfgId: pool[li % pool.length] };
+        }
         const game = GAME_ORDER[(ci * 7 + li * 3) % GAME_ORDER.length];
         // 数独关按章节难度递进选取配置
         const pools: string[][] = [
