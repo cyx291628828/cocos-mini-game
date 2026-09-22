@@ -1185,23 +1185,11 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         });
         redrawAll();   // 初始绘制全部格子（白底描边 + 数字）
 
-        // 拖拽起点（按下空格）与点击擦除（按下已覆盖格）
+        // 拖拽起点（已覆盖格也可按下用于覆盖重选；点按不擦除）
         board.on(Node.EventType.TOUCH_START, (e: any) => {
             if (st.finished) return;
             const i = cellAt(e.getUILocation());
             if (i < 0) return;
-            if (owner[i] >= 0) {
-                // 点击已覆盖格：擦除该矩形
-                const rectId = owner[i];
-                const rc = rects[rectId];
-                if (!rc) return;
-                rc.cells.forEach(ci => { owner[ci] = -1; });
-                covered -= rc.cells.length;
-                rects[rectId] = null as any;
-                updateCovered();
-                redrawAll();
-                return;
-            }
             dragFrom = i;
             previewCells.clear();
             previewCells.add(i);
@@ -1220,7 +1208,6 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             let numsIn = 0, numCell = -1;
             for (const i of rect.cells) {
                 previewCells.add(i);
-                if (owner[i] !== -1) previewValid = false;
                 if (puzzle.nums[i]) { numsIn++; numCell = i; }
             }
             if (numsIn !== 1 || puzzle.nums[numCell] !== rect.cells.length) previewValid = false;
@@ -1233,6 +1220,18 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             const cells = [...previewCells];
             const numsIn = cells.filter(i => puzzle.nums[i]).length;
             if (previewValid && numsIn === 1) {
+                const hitRectIds = new Set<number>();
+                for (const i of cells) {
+                    const oid = owner[i];
+                    if (oid >= 0) hitRectIds.add(oid);
+                }
+                for (const rid of hitRectIds) {
+                    const rc = rects[rid];
+                    if (!rc) continue;
+                    rc.cells.forEach(ci => { owner[ci] = -1; });
+                    covered -= rc.cells.length;
+                    rects[rid] = null as any;
+                }
                 const rectId = rects.length;
                 cells.forEach(i => owner[i] = rectId);
                 rects.push({ cells, numCell: -1 });
@@ -1269,7 +1268,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                 redrawAll();
             },
         });
-        Ui.label(tools, `按住空格拖拽画矩形（勿松手）：每个矩形恰好含一个数字，面积 = 数字`, { size: 19, color: C.inkSoft, y: -76 });
+        Ui.label(tools, `按住拖拽画矩形；合法矩形可覆盖旧区域并还原被压到的矩形`, { size: 19, color: C.inkSoft, y: -76 });
 
         function checkWin() {
             if (st.finished) return;

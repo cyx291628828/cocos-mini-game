@@ -4,7 +4,7 @@
  * 规则：N×N 网格划分成若干矩形，每个矩形包含恰好一个数字（数字 = 矩形面积），
  *       所有格子被矩形恰好覆盖。题目保证唯一解。
  *
- * 生成管线：随机矩形分割（面积 1~9，权重偏好 2~6）→ 唯一解验证
+ * 生成管线：随机矩形分割（面积 2~9，权重偏好 2~6；不含 1×1）→ 唯一解验证
  *   （求解器枚举所有包含最前未覆盖格的矩形，数到 2 剪枝）→ 多解换分割重试（最多 200 轮）
  */
 
@@ -30,7 +30,7 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
     return arr;
 }
 
-/** 随机矩形分割（覆盖全盘，面积 1~9 权重偏好 2~6） */
+/** 随机矩形分割（覆盖全盘，面积 2~9 权重偏好 2~6；不含 1×1，避免无意义的数字 1） */
 function genBoard(N: number, rng: () => number): { nums: Record<number, number>; rects: ShikakuRect[] } | null {
     const owner = new Array(N * N).fill(-1) as number[];
     const nums: Record<number, number> = {};
@@ -46,11 +46,11 @@ function genBoard(N: number, rng: () => number): { nums: Record<number, number>;
         for (let h = 1; h <= N - r0; h++) for (let w = 1; w <= N - c0; w++) {
             let ok = true;
             for (let r = r0; r < r0 + h && ok; r++) for (let c = c0; c < c0 + w; c++) if (owner[r * N + c] !== -1) { ok = false; break; }
-            if (ok) { const area = h * w; if (area <= 9) options.push({ r0, c0, h, w, area }); }
+            if (ok) { const area = h * w; if (area >= 2 && area <= 9) options.push({ r0, c0, h, w, area }); }
         }
         if (!options.length) return null;
         const weighted: ShikakuRect[] = [];
-        for (const o of options) { const wgt = o.area === 1 ? 1 : o.area <= 6 ? 3 : 2; for (let k = 0; k < wgt; k++) weighted.push(o); }
+        for (const o of options) { const wgt = o.area <= 6 ? 3 : 2; for (let k = 0; k < wgt; k++) weighted.push(o); }
         const sel = weighted[(rng() * weighted.length) | 0];
         const cells: number[] = [];
         for (let r = sel.r0; r < sel.r0 + sel.h; r++) for (let c = sel.c0; c < sel.c0 + sel.w; c++) { owner[r * N + c] = rects.length; cells.push(r * N + c); }
