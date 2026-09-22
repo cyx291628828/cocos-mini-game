@@ -1,4 +1,4 @@
-import { Node, Vec3, tween, Graphics, UIOpacity, Label, Color } from 'cc';
+import { Node, Vec3, tween, Graphics, UIOpacity, Label, Color, UITransform } from 'cc';
 import { Ui } from '../core/Ui';
 import { C, hex } from '../core/Const';
 import { Router } from '../core/Router';
@@ -54,8 +54,9 @@ export function buildGame(root: Node, ctx?: GameCtx) {
     const su = {
         board: [] as number[],
         given: [] as boolean[],
-        conflict: new Set<number>(),
+        wrong: new Set<number>(),          // 填错的格（与唯一解不符）
         notes: [] as Array<Set<number>>,   // 候选笔记：每格一个数字集合
+        lives: 3,                          // ❤️ 血量（buildSudoku 里按配置初始化）
         errors: 0,
     };
 
@@ -73,6 +74,28 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         const timerPill = Ui.pill(top, 210, 72, { x: W / 2 - 140, bg: C.blue, edge: C.blueD });
         Ui.emoji(timerPill, '⏱', 30, -68, 3);
         timerLb = Ui.label(timerPill, '00:00', { size: 28, color: '#FFFFFF', x: 18, y: 3 });
+    }
+
+    /* 统一顶栏卡（数独/扫雷/星之战）：⏸（左） + 计时器（中） + 章节关卡竖卡（右） */
+    function buildTopCard(topY: number) {
+        const topPanel = Ui.panel(root, W - 60, 150, { x: 0, y: topY, r: 26 });
+        const pw = (W - 60) / 2;
+        Ui.circleBtn(topPanel, 64, '⏸', { x: -pw + 52, emojiSize: 28, onClick: openPause });
+        timerLb = Ui.label(topPanel, '00:00', { size: 54, color: C.ink, x: -86, y: 20 });
+        Ui.label(topPanel, '计时器', { size: 20, color: C.inkSoft, x: -86, y: -30 });
+        const row1 = ctx!.from === 'level' ? `第${ctx!.ci! + 1}章` : '挑战模式';
+        const row2 = ctx!.from === 'level' ? CHAPTERS[ctx!.ci!].name : GAMES[ctx!.gid].name;
+        const row3 = ctx!.from === 'level'
+            ? `第${ctx!.li! + 1}关`
+            : `${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.tag ?? '每日'}挑战`;
+        const infoCard = Ui.panel(topPanel, 190, 130, { x: pw - 112, y: 0, r: 18 });
+        Ui.label(infoCard, row1, { size: 20, color: C.inkSoft, y: 42 });
+        Ui.label(infoCard, row2, { size: 26, color: C.ink, y: 6 });
+        Ui.label(infoCard, row3, { size: 20, color: C.inkSoft, y: -40 });
+        const sep = Ui.gnode(topPanel, 3, 110, -pw + 118, 0);
+        sep.g.fillColor = hex('#EBD9AE');
+        sep.g.rect(-1.5, -55, 3, 110);
+        sep.g.fill();
     }
 
     /* 计时（超时扣星为被动计算：结算时按用时重算，不会提前结算） */
@@ -199,12 +222,13 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         su.board = puzzle.map((v, i) => holesSet.has(i) ? 0 : v);
         su.given = [...Array(N * N)].map((_, i) => !holesSet.has(i));
         su.notes = [...Array(N * N)].map(() => new Set<number>());
+        su.lives = cfg.lives;
 
-        /* ---------- 参考图布局：顶部信息卡 / 统计卡 / 格线棋盘 / 工具 / 胶囊键盘 ---------- */
+        /* ---------- 参考图布局：统一顶栏 / 统计卡 / 格线棋盘 / 工具 / 胶囊键盘 ---------- */
 
-        // 布局（自底向上）
+        // 布局（自底向上）：数字键盘 → 工具行 → 棋盘
         const padY = -H / 2 + 100;
-        const toolsY = padY + 122;
+        const toolsY = padY + 134;
         const topY = H / 2 - 105;
         const statsY = topY - 137;
         const boardTop = statsY - 70;
@@ -213,33 +237,39 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         const boardY = (boardTop + boardBottom) / 2;
         const cs = boardSize / N;
 
-        /* 顶部信息卡：⏸ + 计时器 + 难度胶囊 + 关卡名 */
-        const topPanel = Ui.panel(root, W - 60, 150, { x: 0, y: topY, r: 26 });
-        const pw = (W - 60) / 2;
-        Ui.circleBtn(topPanel, 64, '⏸', { x: -pw + 52, emojiSize: 28, onClick: openPause });
-        timerLb = Ui.label(topPanel, '00:00', { size: 54, color: C.ink, x: -86, y: 20 });
-        Ui.label(topPanel, '计时器', { size: 20, color: C.inkSoft, x: -86, y: -30 });
-        const diffPill = Ui.pill(topPanel, 236, 62, { x: pw - 138, y: 28, bg: C.gold, edge: C.goldD });
-        Ui.label(diffPill, `难度 · ${cfg.difficulty}`, { size: 26, color: '#FFFFFF', y: 2 });
-        Ui.label(topPanel, ctx!.from === 'level'
-            ? `${CHAPTERS[ctx!.ci!].name} · 第 ${ctx!.li! + 1} 关`
-            : `挑战模式 · ${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.name ?? ''}`,
-            { size: 20, color: C.inkSoft, x: pw - 138, y: -28 });
+        /* 统一顶栏：⏸（左） + 计时器（中） + 章节关卡卡（右） */
+        buildTopCard(topY);
 
-        /* 统计卡：错误次数 / 剩余空数 / 最佳时间（星数不在局内展示，结算时才展示最终星数） */
-        const cw = (W - 108) / 3;
-        const cardErr = Ui.panel(root, cw, 104, { x: -(cw + 12), y: statsY, r: 18 });
-        Ui.label(cardErr, '错误次数', { size: 20, color: C.inkSoft, y: 28 });
-        const errLb = Ui.label(cardErr, '0', { size: 32, color: C.ink, y: -16 });
-
-        const cardBlank = Ui.panel(root, cw, 104, { x: 0, y: statsY, r: 18 });
-        Ui.label(cardBlank, '剩余空数', { size: 20, color: C.inkSoft, y: 28 });
-        const blankLb = Ui.label(cardBlank, '', { size: 32, color: C.ink, y: -16 });
-
-        const cardBest = Ui.panel(root, cw, 104, { x: cw + 12, y: statsY, r: 18 });
-        Ui.label(cardBest, '最佳时间', { size: 20, color: C.inkSoft, y: 28 });
+        /* 统计卡 4 张（右→左：最佳时间 / 难度 / 剩余空数 / ❤️血量） */
+        const cw = (W - 108) / 4;
+        const cardX = (pos: number) => (pos - 1.5) * (cw + 12);
+        // 最右：最佳时间
+        const cardBest = Ui.panel(root, cw, 104, { x: cardX(3), y: statsY, r: 18 });
+        Ui.label(cardBest, '最佳时间', { size: 19, color: C.inkSoft, y: 28 });
         const bestSec = (SAVE.data.best || {})[cfg.id];
-        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 32, color: '#C89B3C', y: -16 });
+        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 26, color: '#C89B3C', y: -16 });
+        // 右二：难度（数独·九宫 / 困难）
+        const typeName = N === 4 ? '四宫' : N === 6 ? '六宫' : '九宫';
+        const cardDiff = Ui.panel(root, cw, 104, { x: cardX(2), y: statsY, r: 18 });
+        Ui.label(cardDiff, `数独·${typeName}`, { size: 19, color: C.inkSoft, y: 28 });
+        Ui.label(cardDiff, cfg.difficulty, { size: 26, color: C.ink, y: -16 });
+        // 右三：剩余空数
+        const cardBlank = Ui.panel(root, cw, 104, { x: cardX(1), y: statsY, r: 18 });
+        Ui.label(cardBlank, '剩余空数', { size: 19, color: C.inkSoft, y: 28 });
+        const blankLb = Ui.label(cardBlank, '', { size: 26, color: C.ink, y: -16 });
+        // 最左：❤️ 血量
+        const cardLife = Ui.panel(root, cw, 104, { x: cardX(0), y: statsY, r: 18 });
+        Ui.label(cardLife, '血量', { size: 19, color: C.inkSoft, y: 28 });
+        const heartNodes: Node[] = [];
+        for (let i = 0; i < cfg.lives; i++) {
+            heartNodes.push(Ui.emoji(cardLife, '❤️', 30, (i - (cfg.lives - 1) / 2) * 38, -16));
+        }
+        const updateHearts = () => {
+            heartNodes.forEach((n, i) => {
+                const op = n.getComponent(UIOpacity) || n.addComponent(UIOpacity);
+                op.opacity = i < su.lives ? 255 : 55;
+            });
+        };
 
         /** 星级仅在结算时计算：3 − 超时达到阈值数 − 错误达到阈值数（最低 0） */
         const calcStars = (): number => {
@@ -247,13 +277,14 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             const errorDed = cfg!.errorCostStar.filter(e => su.errors >= e).length;
             return Math.max(0, 3 - timeoutDed - errorDed);
         };
-        // 剩余空数（分母为实际挖空数：唯一解约束下可能略少于配置值）
+        // 剩余空数（分母为实际挖空数）
         const updateBlank = () => {
             let left = 0;
             for (let i = 0; i < N * N; i++) if (!su.given[i] && su.board[i] === 0) left++;
             blankLb.string = `${left}/${holesCount}`;
         };
         updateBlank();
+        updateHearts();
 
         /* 棋盘：白金外框 + 米黄盘面 + 格线（宫粗线），数字位于格线之下层 */
         board = Ui.node(root, boardSize + 30, boardSize + 30, 0, boardY);
@@ -292,10 +323,10 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             const cg = cellGraphs[i];
             cg.clear();
             const sz = cs - 6;
-            let fillC: string | Color | null = null;
-            if (su.conflict.has(i)) fillC = '#FFC2C2';
-            else if (st.sel === i) fillC = '#FFE9A8';
-            else if (st.sel >= 0 && peersAt[st.sel].includes(i)) fillC = hex(sk.hi, 90);
+            const wrong = su.wrong.has(i);
+            let fillC: string | Color | null = wrong ? '#FFC2C2' : null;
+            if (!wrong && st.sel === i) fillC = '#FFE9A8';
+            else if (!wrong && st.sel >= 0 && peersAt[st.sel].includes(i)) fillC = hex(sk.hi, 90);
             if (fillC) {
                 Ui.rr(cg, sz, sz, 8, fillC);
                 if (st.sel === i) {
@@ -307,8 +338,12 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             }
             const lb = cellLabels[i]!;
             const v = su.board[i];
-            lb.string = v ? String(v) : '';
-            lb.color = hex(su.given[i] ? sk.given : (su.conflict.has(i) ? '#D04848' : sk.user));
+            if (v) {
+                lb.string = String(v);
+                lb.color = hex(su.given[i] ? sk.given : (wrong ? '#D04848' : sk.user));
+            } else {
+                lb.string = '';
+            }
 
             // 候选笔记：空格时按宫格布局渲染小数字
             const box = notesBoxes[i];
@@ -332,28 +367,32 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             cellLabels.push(Ui.label(holder, '', { size: cs * 0.52, color: sk.user }));
             notesBoxes.push(Ui.node(holder, cs, cs));   // 候选笔记层（数字之上）
             if (holesSet.has(i)) {
-                Ui.bindTap(holder, () => { if (!st.finished) { st.sel = i; redrawAll(); } });
+                Ui.bindTap(holder, () => {
+                    if (st.finished) return;
+                    st.sel = i; redrawAll(); repaintKeys();
+                });
             }
         });
         redrawAll();
 
-        /* 数字键盘：胶囊键 + 右下剩余小数字 */
+        /* 数字键盘：胶囊键 + 右下剩余小数字（选中格时同行/列/宫已有数字自动置灰） */
         const pad = Ui.node(root, W - 80, 110, 0, padY);
         const slot = (W - 96) / N;
         const keys: Array<{ g: Graphics; numLb: Label; cntLb: Label }> = [];
-        const paintKey = (k: { g: Graphics; numLb: Label; cntLb: Label }, v: number) => {
+        const paintKey = (k: { g: Graphics; numLb: Label; cntLb: Label }, v: number, blocked: boolean) => {
             const kw = Math.min(slot - 8, 110);
             const used = su.board.filter(x => x === v).length;
             const left = Math.max(0, N - used);
             const done = left <= 0;
+            const dim = done || blocked;
             k.g.clear();
             Ui.rr(k.g, kw, 104, 28, '#E2D4B0');
-            Ui.rr(k.g, kw - 6, 98, 25, C.panel);
-            k.g.strokeColor = hex(done ? '#D8CDB4' : C.panelLine);
+            Ui.rr(k.g, kw - 6, 98, 25, dim ? '#EDE6D4' : C.panel);
+            k.g.strokeColor = hex(done || blocked ? '#D8CDB4' : C.panelLine);
             k.g.lineWidth = 2.5;
             k.g.roundRect(-(kw - 6) / 2 + 1, -48, kw - 8, 95, 23);
             k.g.stroke();
-            k.numLb.color = hex(done ? '#C9BFA8' : C.ink);
+            k.numLb.color = hex(dim ? '#C9BFA8' : C.ink);
             k.cntLb.string = String(left);
             k.cntLb.color = hex(done ? '#C9BFA8' : '#C89B3C');
         };
@@ -367,9 +406,19 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             keys.push({ g: kg.g, numLb, cntLb });
             const vv = v;
             Ui.bindTap(key, () => fill(vv));
-            paintKey(keys[v - 1], v);
+            paintKey(keys[v - 1], v, false);
         }
-        const repaintKeys = () => { for (let v = 1; v <= N; v++) paintKey(keys[v - 1], v); };
+        const repaintKeys = () => {
+            // 选中格时：同行/列/宫已填的数字置灰
+            const blockedNums = new Set<number>();
+            if (st.sel >= 0) {
+                for (const j of peersAt[st.sel]) {
+                    const v = su.board[j];
+                    if (v) blockedNums.add(v);
+                }
+            }
+            for (let v = 1; v <= N; v++) paintKey(keys[v - 1], v, blockedNums.has(v));
+        };
 
         /* 工具行：候选 / 提示 / 擦除 */
         const tools = Ui.node(root, W, 96, 0, toolsY);
@@ -419,7 +468,6 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                 su.board[st.sel] = 0;
                 su.notes[st.sel].clear();
                 st.sel = -1;
-                recomputeConflicts();
                 redrawAll();
                 repaintKeys();
                 updateBlank();
@@ -443,37 +491,28 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             afterFill(i);
         }
         function afterFill(changed: number) {
-            // 清本格笔记，并移除同行/列/宫相关格的该数字笔记
+            // 清本格笔记与标记，并移除同行/列/宫相关格的该数字笔记
             su.notes[changed].clear();
             for (const j of peersAt[changed]) su.notes[j].delete(su.board[changed]);
-            recomputeConflicts();
             redrawAll();
             repaintKeys();
             updateBlank();
-            if (su.conflict.has(changed)) {
-                // 本次填入与同行/列/宫重复 → 计错误 + 明确提示（不提前结算，星星结算时统一算）
+            if (su.board[changed] !== sol[changed]) {
+                // 答案比对模式：填入的数字与唯一解不符 → 扣一颗 ❤️，血量扣完直接失败结算
                 su.errors++;
-                errLb.string = String(su.errors);
-                errLb.color = hex('#D04848');
+                su.lives--;
+                su.wrong.add(changed);
+                updateHearts();
                 Ui.shake(cells[changed]);
-                Modal.toast(`冲突！${su.board[changed]} 在行/列/宫中重复`);
-            } else if (su.board.every(x => x > 0)) {
-                // 填满：必须全盘无冲突才算通关（星级此时才计算，可能 0 星）
-                if (su.conflict.size > 0) {
-                    Modal.toast('已填满，但红色格子仍有冲突，改正后即可通关');
-                } else {
+                Modal.toast(`填错啦！${su.board[changed]} 不在这个格子`);
+                if (su.lives <= 0) { failGame('血量耗尽', su.errors); return; }
+            } else {
+                su.wrong.delete(changed);
+                redrawAll();
+                if (su.board.every(x => x > 0)) {
+                    // 全部按唯一解填对 → 通关（星级此时才计算，可能 0 星）
                     console.log('[Sudoku] 盘面完成 ✓ 星 =', calcStars());
                     winGame();
-                }
-            }
-        }
-        function recomputeConflicts() {
-            su.conflict.clear();
-            for (let i = 0; i < N * N; i++) {
-                const v = su.board[i];
-                if (!v) continue;
-                for (const j of peersAt[i]) {
-                    if (su.board[j] === v) { su.conflict.add(i); su.conflict.add(j); }
                 }
             }
         }
@@ -557,26 +596,22 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         const boardY = (boardTop + boardBottom) / 2;
         const cs = boardSize / N;
 
-        /* 顶部信息卡 */
-        const topPanel = Ui.panel(root, W - 60, 150, { x: 0, y: topY, r: 26 });
-        const pw = (W - 60) / 2;
-        Ui.circleBtn(topPanel, 64, '⏸', { x: -pw + 52, emojiSize: 28, onClick: openPause });
-        timerLb = Ui.label(topPanel, '00:00', { size: 54, color: C.ink, x: -86, y: 20 });
-        Ui.label(topPanel, '计时器', { size: 20, color: C.inkSoft, x: -86, y: -30 });
-        const diffPill = Ui.pill(topPanel, 236, 62, { x: pw - 138, y: 28, bg: C.gold, edge: C.goldD });
-        Ui.label(diffPill, `难度 · ${cfg.difficulty}`, { size: 26, color: '#FFFFFF', y: 2 });
-        Ui.label(topPanel, ctx!.from === 'level'
-            ? `${CHAPTERS[ctx!.ci!].name} · 第 ${ctx!.li! + 1} 关`
-            : `挑战模式 · ${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.name ?? ''}`,
-            { size: 20, color: C.inkSoft, x: pw - 138, y: -28 });
+        /* 统一顶栏：⏸（左） + 计时器（中） + 章节关卡卡（右） */
+        buildTopCard(topY);
 
-        /* 统计卡：剩余雷数 / 最佳时间（踩雷立即失败，无错误计数展示） */
-        const cw = (W - 108) / 2;
-        const cardMine = Ui.panel(root, cw, 104, { x: -(cw + 12) / 2, y: statsY, r: 18 });
+        /* 统计卡 3 张（右→左：最佳时间 / 难度 / 剩余雷数） */
+        const cw = (W - 108) / 3;
+        const cardX = (pos: number) => (pos - 1) * (cw + 12);
+        // 最左：剩余雷数
+        const cardMine = Ui.panel(root, cw, 104, { x: cardX(0), y: statsY, r: 18 });
         Ui.label(cardMine, '剩余雷数', { size: 20, color: C.inkSoft, y: 28 });
         const mineLb = Ui.label(cardMine, String(cfg.mines), { size: 32, color: C.ink, y: -16 });
-
-        const cardBest = Ui.panel(root, cw, 104, { x: (cw + 12) / 2, y: statsY, r: 18 });
+        // 中间：难度（扫雷·N×N / 困难）
+        const cardDiff = Ui.panel(root, cw, 104, { x: cardX(1), y: statsY, r: 18 });
+        Ui.label(cardDiff, `扫雷·${cfg.board}×${cfg.board}`, { size: 19, color: C.inkSoft, y: 28 });
+        Ui.label(cardDiff, cfg.difficulty, { size: 26, color: C.ink, y: -16 });
+        // 最右：最佳时间
+        const cardBest = Ui.panel(root, cw, 104, { x: cardX(2), y: statsY, r: 18 });
         Ui.label(cardBest, '最佳时间', { size: 20, color: C.inkSoft, y: 28 });
         const bestSec = (SAVE.data.best || {})[cfg.id];
         Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 32, color: '#C89B3C', y: -16 });
@@ -777,26 +812,22 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         const boardY = (boardTop + boardBottom) / 2;
         const cs = boardSize / N;
 
-        /* 顶部信息卡 */
-        const topPanel = Ui.panel(root, W - 60, 150, { x: 0, y: topY, r: 26 });
-        const pw = (W - 60) / 2;
-        Ui.circleBtn(topPanel, 64, '⏸', { x: -pw + 52, emojiSize: 28, onClick: openPause });
-        timerLb = Ui.label(topPanel, '00:00', { size: 54, color: C.ink, x: -86, y: 20 });
-        Ui.label(topPanel, '计时器', { size: 20, color: C.inkSoft, x: -86, y: -30 });
-        const diffPill = Ui.pill(topPanel, 236, 62, { x: pw - 138, y: 28, bg: C.gold, edge: C.goldD });
-        Ui.label(diffPill, `难度 · ${cfg.difficulty}`, { size: 26, color: '#FFFFFF', y: 2 });
-        Ui.label(topPanel, ctx!.from === 'level'
-            ? `${CHAPTERS[ctx!.ci!].name} · 第 ${ctx!.li! + 1} 关`
-            : `挑战模式 · ${CH_PERIODS.find(p => p.key === ctx!.challengeKey)?.name ?? ''}`,
-            { size: 20, color: C.inkSoft, x: pw - 138, y: -28 });
+        /* 统一顶栏：⏸（左） + 计时器（中） + 章节关卡卡（右） */
+        buildTopCard(topY);
 
-        /* 统计卡：已放星数 / 最佳时间 */
-        const cw = (W - 108) / 2;
-        const cardPut = Ui.panel(root, cw, 104, { x: -(cw + 12) / 2, y: statsY, r: 18 });
+        /* 统计卡 3 张（右→左：最佳时间 / 难度 / 已放星数） */
+        const cw = (W - 108) / 3;
+        const cardX = (pos: number) => (pos - 1) * (cw + 12);
+        // 最左：已放星数
+        const cardPut = Ui.panel(root, cw, 104, { x: cardX(0), y: statsY, r: 18 });
         Ui.label(cardPut, '已放星数', { size: 20, color: C.inkSoft, y: 28 });
         const putLb = Ui.label(cardPut, `0/${totalStarsNeed}`, { size: 32, color: C.ink, y: -16 });
-
-        const cardBest = Ui.panel(root, cw, 104, { x: (cw + 12) / 2, y: statsY, r: 18 });
+        // 中间：难度（星之战·K星 / 困难）
+        const cardDiff = Ui.panel(root, cw, 104, { x: cardX(1), y: statsY, r: 18 });
+        Ui.label(cardDiff, `星之战·${K}星`, { size: 19, color: C.inkSoft, y: 28 });
+        Ui.label(cardDiff, cfg.difficulty, { size: 26, color: C.ink, y: -16 });
+        // 最右：最佳时间
+        const cardBest = Ui.panel(root, cw, 104, { x: cardX(2), y: statsY, r: 18 });
         Ui.label(cardBest, '最佳时间', { size: 20, color: C.inkSoft, y: 28 });
         const bestSec = (SAVE.data.best || {})[cfg.id];
         Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 32, color: '#C89B3C', y: -16 });
@@ -918,19 +949,62 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             cellLabels.push(Ui.label(holder, '', { size: sz * 0.55 }));
             Ui.bindTap(holder, () => {
                 if (st.finished) return;
+                if (excludeMode) {
+                    // 排除模式：点空格打/去 ✕（星格不受影响）
+                    if (cellState[i] !== 1) cellState[i] = cellState[i] === 2 ? 0 : 2;
+                    recount();
+                    redrawAll();
+                    return;
+                }
                 cellState[i] = (cellState[i] + 1) % 3;   // 空 → 星 → X → 空
                 recount();
                 redrawAll();
                 checkWin();
             });
         });
+        // 滑动批量排除：仅排除模式下生效——按住划过的空格统一标记为 ✕（放星格不受影响）
+        board.on(Node.EventType.TOUCH_MOVE, (e: any) => {
+            if (st.finished || !excludeMode) return;
+            const ut = board.getComponent(UITransform)!;
+            const loc = e.getUILocation();
+            const local = ut.convertToNodeSpaceAR(loc);
+            const c = Math.floor((local.x + boardSize / 2) / cs);
+            const r = Math.floor((boardSize / 2 - local.y) / cs);
+            if (r < 0 || r >= N || c < 0 || c >= N) return;
+            const i = r * N + c;
+            if (cellState[i] === 0) {
+                cellState[i] = 2;
+                recount();
+                redrawAll();
+            }
+        });
         recount();
         redrawAll();
 
-        /* 工具行：清除全部标记 */
+        /* 工具行：✕ 排除切换 / 🧹 清除全部 */
         const tools = Ui.node(root, W, 96, 0, toolsY);
-        Ui.candyBtn(tools, 300, 96, '🧹 清除全部', [C.blueH, C.blue, C.blueD], {
-            x: 0, fontSize: 30,
+        let excludeMode = false;
+        const exBtn = Ui.candyBtn(tools, 300, 96, '✕ 排除', [C.blueH, C.blue, C.blueD], {
+            x: -170, fontSize: 30,
+            onClick: () => {
+                excludeMode = !excludeMode;
+                paintExBtn();
+                Modal.toast(excludeMode ? '✕ 排除模式：点格子标记排除' : '已退出排除模式');
+            },
+        });
+        const paintExBtn = () => {
+            const c: [string, string, string] = excludeMode ? [C.goldH, C.gold, C.goldD] : [C.blueH, C.blue, C.blueD];
+            const bodyG = exBtn.children[0].getComponent(Graphics)!;
+            bodyG.clear();
+            Ui.rr(bodyG, 300, 96, 30, c[2]);
+            const mainG = exBtn.children[1].getComponent(Graphics)!;
+            mainG.clear();
+            Ui.rr(mainG, 300, 88, 30, c[1]);
+            const lb = findBtnLabel(exBtn);
+            if (lb) lb.string = excludeMode ? '✕ 排除中' : '✕ 排除';
+        };
+        Ui.candyBtn(tools, 300, 96, '🧹 清除全部', [C.pinkH, C.pink, C.pinkD], {
+            x: 170, fontSize: 30,
             onClick: () => {
                 if (st.finished) return;
                 for (let i = 0; i < N * N; i++) cellState[i] = 0;

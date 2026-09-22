@@ -13,6 +13,8 @@ export interface SudokuCfg {
     errorCostStar: number[];// 错误扣星阶梯（次）：累计错误达到各值依次扣 1 星
     holes: number;          // 挖空数量（出题空格数）
     rewardCoins: number;    // 通关金币奖励
+    lives: number;          // 血量：填错一次扣一颗 ❤️，扣完直接失败结算
+    keyHint: boolean;       // 键盘辅助：选中格时是否置灰同行/列/宫已有的数字（true=辅助开启）
 }
 
 /** 扫雷表行（assets/resources/config/mine.json）
@@ -73,7 +75,7 @@ const CHALLENGE_STAR: Record<string, string> = {
 /** 数独配置加载失败时的兜底 */
 const FALLBACK_SUDOKU: SudokuCfg = {
     id: 'su_9_normal', type: 9, difficulty: '普通',
-    timeCostStar: [120, 240, 360], errorCostStar: [3, 6, 9], holes: 42, rewardCoins: 60,
+    timeCostStar: [120, 240, 360], errorCostStar: [3, 6, 9], holes: 42, rewardCoins: 60, lives: 3, keyHint: true,
 };
 
 /** 扫雷配置加载失败时的兜底 */
