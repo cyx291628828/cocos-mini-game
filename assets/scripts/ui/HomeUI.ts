@@ -50,7 +50,7 @@ export function buildHome(root: Node) {
     tween(titleNode).to(0.55, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
     Ui.bob(titleNode, 10, 3.2, 0.6);
     const sub = Ui.pill(logoBox, 500, 58, { y: -35, bg: '#FFFFFFC8', edge: C.panelDark });
-    Ui.label(sub, '数独 · 星之战 · 数方 · 杀手数独 · 扫雷', { size: 23, color: C.inkSoft, y: 3 });
+    Ui.label(sub, '数独 · 星之战 · 数方 · 杀手数独 · 扫雷 · 搭桥', { size: 23, color: C.inkSoft, y: 3 });
     Ui.popIn(sub, 0.25);
 
     /* 吉祥物：旋转虚线环 + 金色徽章 + 拼图脸 */

@@ -9,8 +9,9 @@ export const GAMES: Record<string, GameDef> = {
     shikaku: { id: 'shikaku', name: '数方',     icon: '🔲', grid: 10 },
     star:    { id: 'star',    name: '星之战',   icon: '⭐', grid: 7 },
     killer:  { id: 'killer',  name: '杀手数独', icon: '💀', grid: 9 },
+    hashi:   { id: 'hashi',   name: '搭桥',     icon: '🌉', grid: 9 },
 };
-export const GAME_ORDER = ['sudoku', 'mine', 'shikaku', 'star', 'killer'];
+export const GAME_ORDER = ['sudoku', 'mine', 'shikaku', 'star', 'killer', 'hashi'];
 
 export interface ChapterDef {
     name: string; emoji: string; deco: string[];
@@ -22,7 +23,7 @@ export const CHAPTERS: ChapterDef[] = [
     { name: '海底奇缘', emoji: '🐠', deco: ['🐠', '🐙', '🪸', '💧'], bg: ['#D9F3FF', '#A8E0F7'], banner: ['#7CC2F5', '#3D95D8', '#2B7BB8'], sub: '深海中的数字秘密' },
     { name: '失落沙漠', emoji: '🏜️', deco: ['🏜️', '🐍', '⚱️', '☀️'], bg: ['#FFF2D5', '#F5DCA3'], banner: ['#FFD875', '#E8A93C', '#C98D26'], sub: '黄沙之下的古老谜题' },
     { name: '星空之旅', emoji: '🪐', deco: ['🪐', '🚀', '🔭', '☄️'], bg: ['#E9E2FF', '#C4B4F5'], banner: ['#BC94F7', '#8355D8', '#6A3FBF'], sub: '银河尽头的终极谜题' },
-    { name: '极地冰原', emoji: '🐧', deco: ['🐧', '❄️', '🐻‍❄️', '🧊'], bg: ['#E4F6FA', '#BEE8F2'], banner: ['#9ADCEC', '#54A8BE', '#3C91A6'], sub: '冰封谜题 · 敬请期待' },
+    { name: '极地冰原', emoji: '🐧', deco: ['🐧', '❄️', '🐻‍❄️', '🧊'], bg: ['#E4F6FA', '#BEE8F2'], banner: ['#9ADCEC', '#54A8BE', '#3C91A6'], sub: '冰封群岛 · 搭桥连通' },
 ];
 export const LEVELS_PER_CH = 12;
 /** 第 ci 章（0 起）解锁所需的前序累计星数 */

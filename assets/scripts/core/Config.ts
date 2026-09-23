@@ -61,6 +61,21 @@ export interface KillerCfg {
     keyHint: boolean;       // 键盘辅助
 }
 
+/** 搭桥表行（assets/resources/config/hashi.json）
+ *  岛上数字 = 该岛桥数；搭错桥（与唯一解不符）扣 ❤️，扣完失败。 */
+export interface HashiCfg {
+    id: string;             // 唯一 id，如 hashi_hard
+    board: number;          // 棋盘边长：board × board 格
+    islandMin: number;      // 岛数下限
+    islandMax: number;      // 岛数上限
+    difficulty: string;     // 难度：简单 / 普通 / 困难
+    timeCostStar: number[]; // 超时扣星阶梯（秒）
+    errorCostStar: number[];// 错误扣星阶梯（次）
+    rewardCoins: number;    // 通关金币奖励
+    lives: number;          // 血量
+    keyHint: boolean;       // 是否显示提示按钮
+}
+
 /** 关卡表行（assets/resources/config/level.json）
  *  在表里填一行即可把某关指定为某玩法的某配置 id：
  *  { "id": "L1-5", "chapter": 0, "level": 5, "game": "sudoku", "cfgId": "su_6_normal" }
@@ -108,6 +123,13 @@ const CHALLENGE_KILLER: Record<string, string> = {
     monthly: 'killer_hard',
 };
 
+/** 挑战模式默认使用的搭桥配置 */
+const CHALLENGE_HASHI: Record<string, string> = {
+    daily: 'hashi_easy',
+    weekly: 'hashi_normal',
+    monthly: 'hashi_hard',
+};
+
 /** 数独配置加载失败时的兜底 */
 const FALLBACK_SUDOKU: SudokuCfg = {
     id: 'su_9_normal', type: 9, difficulty: '普通',
@@ -139,12 +161,20 @@ const FALLBACK_KILLER: KillerCfg = {
     rewardCoins: 70, lives: 3, keyHint: true,
 };
 
+/** 搭桥配置加载失败时的兜底 */
+const FALLBACK_HASHI: HashiCfg = {
+    id: 'hashi_normal', board: 9, islandMin: 11, islandMax: 15, difficulty: '普通',
+    timeCostStar: [360, 600], errorCostStar: [3, 6, 9],
+    rewardCoins: 70, lives: 3, keyHint: true,
+};
+
 class ConfigMgr {
     sudokuList: SudokuCfg[] = [];
     mineList: MineCfg[] = [];
     starList: StarCfg[] = [];
     shikakuList: ShikakuCfg[] = [];
     killerList: KillerCfg[] = [];
+    hashiList: HashiCfg[] = [];
     levelList: LevelCfg[] = [];
     ready = false;
     private sudokuMap = new Map<string, SudokuCfg>();
@@ -152,11 +182,12 @@ class ConfigMgr {
     private starMap = new Map<string, StarCfg>();
     private shikakuMap = new Map<string, ShikakuCfg>();
     private killerMap = new Map<string, KillerCfg>();
+    private hashMap = new Map<string, HashiCfg>();
     private levelMap = new Map<string, LevelCfg>();
 
     /** 在 Game.start 里调用（resources 异步加载） */
     load(cb?: () => void) {
-        let pending = 6;
+        let pending = 7;
         const done = () => { if (--pending === 0) { this.ready = true; if (cb) cb(); } };
         resources.load('config/sudoku', JsonAsset, (err, asset) => {
             if (!err && asset && Array.isArray(asset.json)) this.sudokuList = asset.json as SudokuCfg[];
@@ -195,6 +226,14 @@ class ConfigMgr {
             else console.warn('[Config] 杀手表为空或加载失败，使用兜底配置');
             done();
         });
+        resources.load('config/hashi', JsonAsset, (err, asset) => {
+            if (!err && asset && Array.isArray(asset.json)) this.hashiList = asset.json as HashiCfg[];
+            this.hashMap.clear();
+            this.hashiList.forEach(c => this.hashMap.set(c.id, c));
+            if (this.hashiList.length) console.log('[Config] 搭桥表加载', this.hashiList.length, '行');
+            else console.warn('[Config] 搭桥表为空或加载失败，使用兜底配置');
+            done();
+        });
         resources.load('config/level', JsonAsset, (err, asset) => {
             if (!err && asset && Array.isArray(asset.json)) this.levelList = asset.json as LevelCfg[];
             this.levelMap.clear();
@@ -222,6 +261,10 @@ class ConfigMgr {
 
     getKiller(id: string): KillerCfg | null {
         return this.killerMap.get(id) || null;
+    }
+
+    getHashi(id: string): HashiCfg | null {
+        return this.hashMap.get(id) || null;
     }
 
     /** 挑战模式的数独配置 id */
@@ -262,8 +305,16 @@ class ConfigMgr {
         return CHALLENGE_KILLER[key] || 'killer_normal';
     }
 
+    getChallengeHashiId(key: string): string {
+        return CHALLENGE_HASHI[key] || 'hashi_normal';
+    }
+
     getFallbackKiller(): KillerCfg {
         return { ...FALLBACK_KILLER };
+    }
+
+    getFallbackHashi(): HashiCfg {
+        return { ...FALLBACK_HASHI };
     }
 
     /** 章节关序 → 玩法与配置：关卡表行优先，未配置走默认轮换 */
@@ -274,6 +325,11 @@ class ConfigMgr {
         if (ci === 4) {
             const pool = ['killer_easy', 'killer_easy', 'killer_normal', 'killer_normal', 'killer_normal', 'killer_hard', 'killer_hard', 'killer_hard', 'killer_hard', 'killer_normal', 'killer_hard', 'killer_hard'];
             return { game: 'killer', cfgId: pool[li % pool.length] };
+        }
+        // 第六章（ci=5）整章搭桥
+        if (ci === 5) {
+            const pool = ['hashi_easy', 'hashi_easy', 'hashi_easy', 'hashi_easy', 'hashi_normal', 'hashi_normal', 'hashi_normal', 'hashi_normal', 'hashi_hard', 'hashi_hard', 'hashi_hard', 'hashi_hard'];
+            return { game: 'hashi', cfgId: pool[li % pool.length] };
         }
         const game = GAME_ORDER[(ci * 7 + li * 3) % GAME_ORDER.length];
         // 数独关按章节难度递进选取配置

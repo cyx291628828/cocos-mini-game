@@ -7,10 +7,11 @@ import {
     GAMES, CHAPTERS, LEVELS_PER_CH, skinOf, mulberry32,
     CH_PERIODS, GameCtx,
 } from '../core/Data';
-import { Config, SudokuCfg, MineCfg, StarCfg, ShikakuCfg, KillerCfg } from '../core/Config';
+import { Config, SudokuCfg, MineCfg, StarCfg, ShikakuCfg, KillerCfg, HashiCfg } from '../core/Config';
 import { genStarPuzzle } from '../core/StarGen';
 import { genShikakuPuzzle } from '../core/ShikakuGen';
 import { genKillerPuzzle, validateKillerBoard } from '../core/KillerGen';
+import { genHashiPuzzle, hashiEdges } from '../core/HashiGen';
 import { Modal } from './ModalUI';
 import { confetti } from './Confetti';
 import { checkAchievements } from './Achievement';
@@ -31,6 +32,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
     let starCfg: StarCfg | null = null;
     let shikakuCfg: ShikakuCfg | null = null;
     let killerCfg: KillerCfg | null = null;
+    let hashiCfg: HashiCfg | null = null;
     if (ctx.from === 'level') {
         const lv = Config.getLevel(ctx.ci!, ctx.li!);
         ctx.gid = lv.game;
@@ -39,6 +41,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         if (ctx.gid === 'star') starCfg = lv.cfgId ? Config.getStar(lv.cfgId) : null;
         if (ctx.gid === 'shikaku') shikakuCfg = lv.cfgId ? Config.getShikaku(lv.cfgId) : null;
         if (ctx.gid === 'killer') killerCfg = lv.cfgId ? Config.getKiller(lv.cfgId) : null;
+        if (ctx.gid === 'hashi') hashiCfg = lv.cfgId ? Config.getHashi(lv.cfgId) : null;
     } else if (ctx.gid === 'sudoku') {
         cfg = Config.getSudoku(Config.getChallengeSudokuId(ctx.challengeKey || 'daily'));
     } else if (ctx.gid === 'mine') {
@@ -49,12 +52,15 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         shikakuCfg = Config.getShikaku(Config.getChallengeShikakuId(ctx.challengeKey || 'daily'));
     } else if (ctx.gid === 'killer') {
         killerCfg = Config.getKiller(Config.getChallengeKillerId(ctx.challengeKey || 'daily'));
+    } else if (ctx.gid === 'hashi') {
+        hashiCfg = Config.getHashi(Config.getChallengeHashiId(ctx.challengeKey || 'daily'));
     }
     if (ctx.gid === 'sudoku' && !cfg) cfg = Config.getFallbackSudoku();
     if (ctx.gid === 'mine' && !mineCfg) mineCfg = Config.getFallbackMine();
     if (ctx.gid === 'star' && !starCfg) starCfg = Config.getFallbackStar();
     if (ctx.gid === 'shikaku' && !shikakuCfg) shikakuCfg = Config.getFallbackShikaku();
     if (ctx.gid === 'killer' && !killerCfg) killerCfg = Config.getFallbackKiller();
+    if (ctx.gid === 'hashi' && !hashiCfg) hashiCfg = Config.getFallbackHashi();
 
     const W = Ui.W(), H = Ui.H();
     const g = GAMES[ctx.gid];
@@ -74,7 +80,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
 
     /* 顶栏（数独/扫雷/星之战使用参考图专属布局，见各自 build 函数） */
     let timerLb: Label | null = null;
-    if (ctx.gid !== 'sudoku' && ctx.gid !== 'mine' && ctx.gid !== 'star' && ctx.gid !== 'shikaku' && ctx.gid !== 'killer') {
+    if (ctx.gid !== 'sudoku' && ctx.gid !== 'mine' && ctx.gid !== 'star' && ctx.gid !== 'shikaku' && ctx.gid !== 'killer' && ctx.gid !== 'hashi') {
         const top = Ui.node(root, W, 110, 0, H / 2 - 85);
         Ui.circleBtn(top, 84, '⏸', { x: -W / 2 + 80, emojiSize: 40, onClick: openPause });
         const info = Ui.panel(top, 380, 92, { x: 50, r: 24 });
@@ -135,6 +141,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         buildShikaku(shikakuCfg);
     } else if (ctx.gid === 'killer' && killerCfg) {
         buildKiller(killerCfg);
+    } else if (ctx.gid === 'hashi' && hashiCfg) {
+        buildHashi(hashiCfg);
     } else {
         /* 其他玩法：棋盘 + 演示结算（规则后续接入） */
         boardSize = Math.min(W - 90, 640);
@@ -1761,15 +1769,301 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         }
     }
 
-    /* ================= 工具条（非数独玩法：演示结算） ================= */
+    /* ================= 搭桥（真实规则，配置驱动） ================= */
 
-    const toolbar = Ui.node(root, W, 120, 0, -H / 2 + 90);
-    if (ctx.gid !== 'sudoku') {
-        Ui.candyBtn(toolbar, 460, 104, '▶ 演示通关结算', [C.greenH, C.green, C.greenD], {
-            y: 0, fontSize: 32, delay: 0.3,
-            onClick: () => finish(3, 30 + 3 * 10),
+    function buildHashi(cfg: HashiCfg) {
+        const N = cfg.board;
+        const seed = ctx!.from === 'level'
+            ? ctx!.ci! * 100 + ctx!.li! + 77
+            : (ctx!.challengeKey === 'weekly' ? 71 : ctx!.challengeKey === 'monthly' ? 131 : 7);
+        let puzzle = genHashiPuzzle(N, N, cfg.islandMin, cfg.islandMax, seed * 7919 + 29);
+        for (let t = 1; t <= 5 && !puzzle; t++) puzzle = genHashiPuzzle(N, N, cfg.islandMin, cfg.islandMax, seed + t * 977);
+        if (!puzzle) {
+            Modal.open(box => {
+                const p = Ui.panel(box, 560, 420);
+                Ui.label(p, '⚠️ 本关题目生成异常', { size: 36, y: 60 });
+                Ui.label(p, '请退出后重试', { size: 24, color: C.inkSoft, y: 5 });
+                Ui.candyBtn(p, 220, 90, '退 出', [C.pinkH, C.pink, C.pinkD], { y: -100, fontSize: 30, onClick: () => { Modal.close(); Router.back(); } });
+            });
+            return;
+        }
+
+        const toolsY = -H / 2 + 222;
+        const topY = H / 2 - 105;
+        const statsY = topY - 137;
+        const boardTop = statsY - 70;
+        const boardBottom = toolsY + 58;
+        boardSize = Math.min(W - 70, 640, boardTop - boardBottom - 36);
+        const boardY = (boardTop + boardBottom) / 2;
+        const cs = boardSize / N;
+
+        buildTopCard(topY);
+
+        su.lives = cfg.lives;
+        su.errors = 0;
+
+        /* 统计卡 4 张（右→左：最佳时间 / 难度 / 剩余桥数 / 血量） */
+        const cw = (W - 108) / 4;
+        const cardX = (pos: number) => (pos - 1.5) * (cw + 12);
+        const cardBest = Ui.panel(root, cw, 104, { x: cardX(3), y: statsY, r: 18 });
+        Ui.label(cardBest, '最佳时间', { size: 19, color: C.inkSoft, y: 28 });
+        const bestSec = (SAVE.data.best || {})[cfg.id];
+        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 26, color: '#C89B3C', y: -16 });
+        const cardDiff = Ui.panel(root, cw, 104, { x: cardX(2), y: statsY, r: 18 });
+        Ui.label(cardDiff, '搭桥', { size: 19, color: C.inkSoft, y: 28 });
+        Ui.label(cardDiff, cfg.difficulty, { size: 26, color: C.ink, y: -16 });
+        const cardLeft = Ui.panel(root, cw, 104, { x: cardX(1), y: statsY, r: 18 });
+        Ui.label(cardLeft, '剩余桥数', { size: 19, color: C.inkSoft, y: 28 });
+        const leftLb = Ui.label(cardLeft, '0', { size: 26, color: C.ink, y: -16 });
+        const cardLife = Ui.panel(root, cw, 104, { x: cardX(0), y: statsY, r: 18 });
+        Ui.label(cardLife, '血量', { size: 19, color: C.inkSoft, y: 28 });
+        const heartN = Math.min(5, Math.max(1, cfg.lives));
+        const heartNodes: Node[] = [];
+        {
+            const innerW = cw - 18;
+            const hSize = Math.min(30, Math.floor(innerW / heartN * 0.62), heartN >= 5 ? 22 : 28);
+            const gap = heartN > 1
+                ? (heartN >= 5
+                    ? Math.min(24, (innerW - hSize) / (heartN - 1))
+                    : Math.min(36, (innerW - hSize) / (heartN - 1)))
+                : 0;
+            for (let i = 0; i < heartN; i++) {
+                heartNodes.push(Ui.emoji(cardLife, '❤️', hSize, (i - (heartN - 1) / 2) * gap, -18));
+            }
+        }
+        const updateHearts = () => heartNodes.forEach((n, i) => {
+            const op = n.getComponent(UIOpacity) || n.addComponent(UIOpacity);
+            op.opacity = i < su.lives ? 255 : 55;
         });
-        Ui.label(toolbar, '玩法规则后续接入 · 现为展示棋盘', { size: 20, color: C.inkSoft, y: -80 });
+        updateHearts();
+
+        const calcStars = (): number => {
+            const timeoutDed = cfg!.timeCostStar.filter(t => st.sec >= t).length;
+            const errorDed = cfg!.errorCostStar.filter(e => su.errors >= e).length;
+            return Math.max(0, 3 - timeoutDed - errorDed);
+        };
+
+        /* 棋盘骨架 */
+        board = Ui.node(root, boardSize + 30, boardSize + 30, 0, boardY);
+        const frame = Ui.gnode(board, boardSize + 30, boardSize + 30);
+        Ui.rr(frame.g, boardSize + 30, boardSize + 30, 20, '#C8A058');
+        const frameIn = Ui.gnode(board, boardSize + 22, boardSize + 22);
+        Ui.rr(frameIn.g, boardSize + 22, boardSize + 22, 16, sk.frame);
+        const face = Ui.gnode(board, boardSize + 12, boardSize + 12);
+        Ui.rr(face.g, boardSize + 12, boardSize + 12, 12, sk.cell);
+
+        const half = boardSize / 2;
+        const grid = Ui.gnode(board, boardSize, boardSize);
+        grid.g.strokeColor = hex('#D8C49E');
+        grid.g.lineWidth = 1.5;
+        for (let k = 1; k < N; k++) {
+            grid.g.moveTo(-half, half - k * cs); grid.g.lineTo(half, half - k * cs);
+            grid.g.moveTo(-half + k * cs, half); grid.g.lineTo(-half + k * cs, -half);
+        }
+        grid.g.stroke();
+
+        /* 题面：岛 / 可见边 / 解 */
+        const islands = puzzle.islands;
+        const nums = puzzle.nums;
+        const nIsland = islands.length;
+        const edges = hashiEdges(N, N, islands);
+        const edgeIdx = new Map<string, number>();
+        edges.forEach((e, i) => edgeIdx.set(e.a + '-' + e.b, i));
+        const solMult = new Array(edges.length).fill(0);
+        for (const b of puzzle.bridges) solMult[edgeIdx.get(b.a + '-' + b.b)!] = b.n;
+        const cur = new Array(edges.length).fill(0);        // 玩家当前桥数（恒 ≤ 解）
+        const totalSol = solMult.reduce((s, x) => s + x, 0);
+        const placedCount = () => cur.reduce((s, x) => s + x, 0);
+        const islandAt = new Map<number, number>();
+        islands.forEach((cell, id) => islandAt.set(cell, id));
+        const center = (id: number) => {
+            const r = (islands[id] / N) | 0, c = islands[id] % N;
+            return { x: -half + cs / 2 + c * cs, y: half - cs / 2 - r * cs };
+        };
+        const rIsl = cs * 0.3;
+
+        /* 桥层 / 闪烁层（在岛下面） */
+        const bridgeG = Ui.gnode(board, boardSize, boardSize);
+        const flashG = Ui.gnode(board, boardSize, boardSize);
+        const flashOp = flashG.node.getComponent(UIOpacity) || flashG.node.addComponent(UIOpacity);
+
+        const edgeSeg = (ei: number) => {
+            const c1 = center(edges[ei].a), c2 = center(edges[ei].b);
+            const dx = c2.x - c1.x, dy = c2.y - c1.y;
+            const len = Math.hypot(dx, dy) || 1;
+            const ux = dx / len, uy = dy / len;
+            return {
+                x1: c1.x + ux * (rIsl + 3), y1: c1.y + uy * (rIsl + 3),
+                x2: c2.x - ux * (rIsl + 3), y2: c2.y - uy * (rIsl + 3),
+            };
+        };
+        const strokeBridge = (g: Graphics, ei: number, offset: number, color: string, width: number) => {
+            const s = edgeSeg(ei);
+            const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
+            const len = Math.hypot(dx, dy) || 1;
+            const ox = -dy / len * offset, oy = dx / len * offset;
+            g.strokeColor = hex(color);
+            g.lineWidth = width;
+            g.moveTo(s.x1 + ox, s.y1 + oy);
+            g.lineTo(s.x2 + ox, s.y2 + oy);
+        };
+
+        const redrawBridges = () => {
+            bridgeG.g.clear();
+            for (let ei = 0; ei < edges.length; ei++) {
+                if (cur[ei] === 1) strokeBridge(bridgeG.g, ei, 0, '#4A3B28', 3.5);
+                else if (cur[ei] >= 2) {
+                    strokeBridge(bridgeG.g, ei, -3.2, '#4A3B28', 3.5);
+                    strokeBridge(bridgeG.g, ei, 3.2, '#4A3B28', 3.5);
+                }
+            }
+            bridgeG.g.stroke();
+        };
+
+        /* 岛节点（圆 + 数字） */
+        const islandNodes: Array<{ g: Graphics; lb: Label }> = [];
+        islands.forEach((cell, id) => {
+            const { x, y } = center(id);
+            const holder = Ui.node(board, cs, cs, x, y);
+            const g = Ui.gnode(holder, cs, cs);
+            const lb = Ui.label(holder, String(nums[id]), { size: cs * 0.34, color: sk.given, bold: true });
+            islandNodes.push({ g: g.g, lb });
+        });
+        let selId = -1;
+        const redrawIsland = (id: number) => {
+            const { g } = islandNodes[id];
+            const sel = selId === id;
+            g.clear();
+            g.fillColor = hex(sel ? '#FFE9A8' : '#FFFFFF');
+            g.circle(0, 0, rIsl);
+            g.fill();
+            g.strokeColor = hex(sel ? '#E8A020' : sk.given);
+            g.lineWidth = sel ? 4.5 : 3;
+            g.circle(0, 0, rIsl);
+            g.stroke();
+        };
+        const redrawAllIslands = () => { for (let id = 0; id < nIsland; id++) redrawIsland(id); };
+
+        const updateLeft = () => { leftLb.string = String(totalSol - placedCount()); };
+
+        const flashEdge = (ei: number, color: string) => {
+            flashG.g.clear();
+            strokeBridge(flashG.g, ei, 0, color, 6);
+            flashG.g.stroke();
+            flashOp.opacity = 255;
+            tween(flashOp)
+                .to(0.55, { opacity: 0 })
+                .call(() => flashG.g.clear())
+                .start();
+        };
+
+        const cellAt = (loc: { x: number; y: number; z?: number }): number => {
+            const local = uiToLocal(board, loc);
+            const c = Math.floor((local.x + boardSize / 2) / cs);
+            const r = Math.floor((boardSize / 2 - local.y) / cs);
+            if (!(r >= 0 && r < N && c >= 0 && c < N)) return -1;
+            return r * N + c;
+        };
+
+        const checkWin = () => {
+            if (st.finished) return;
+            if (placedCount() >= totalSol) {
+                st.paused = true;
+                console.log('[Hashi] 全桥搭成 ✓ 星 =', calcStars());
+                winGame();
+            }
+        };
+
+        const tryEdge = (ei: number) => {
+            if (st.finished) return;
+            const next = (cur[ei] + 1) % 3;
+            if (next > solMult[ei]) {
+                // 搭错桥：与唯一解不符 → 红闪 + 计错误 + 扣 ❤️，桥数不变
+                su.errors++;
+                su.lives--;
+                updateHearts();
+                flashEdge(ei, '#E0483C');
+                if (su.lives <= 0) {
+                    failGame('❤️ 耗尽', su.errors);
+                    return;
+                }
+            } else {
+                cur[ei] = next;
+                redrawBridges();
+                updateLeft();
+                checkWin();
+            }
+        };
+
+        /* 点击：board 统一坐标（不依赖 cell 触摸冒泡）；点岛选中 → 点同线岛搭桥 */
+        board.on(Node.EventType.TOUCH_END, (e: any) => {
+            if (st.finished || st.paused) return;
+            const cell = cellAt(e.getUILocation());
+            const id = cell >= 0 ? (islandAt.get(cell) ?? -1) : -1;
+            if (id < 0) return;
+            if (selId < 0) {
+                selId = id;
+                redrawAllIslands();
+                return;
+            }
+            if (selId === id) {
+                selId = -1;
+                redrawAllIslands();
+                return;
+            }
+            const key = Math.min(selId, id) + '-' + Math.max(selId, id);
+            const ei = edgeIdx.get(key);
+            selId = -1;
+            redrawAllIslands();
+            if (ei == null) return;   // 不同线 → 无操作
+            tryEdge(ei);
+        });
+
+        redrawBridges();
+        redrawAllIslands();
+        updateLeft();
+
+        /* 工具行：💡提示（keyHint） + 🧹清除全部 */
+        const tools = Ui.node(root, W, 96, 0, toolsY);
+        const clearAll = () => {
+            if (st.finished) return;
+            cur.fill(0);
+            selId = -1;
+            redrawBridges();
+            redrawAllIslands();
+            updateLeft();
+        };
+        if (cfg.keyHint) {
+            Ui.candyBtn(tools, 250, 96, '💡 提示', [C.blueH, C.blue, C.blueD], {
+                x: -140, fontSize: 30,
+                onClick: () => {
+                    if (st.finished) return;
+                    for (let ei = 0; ei < edges.length; ei++) {
+                        if (cur[ei] < solMult[ei]) {
+                            // 高亮提示：桥身闪金色 + 未搭满的端点岛闪金圈
+                            flashEdge(ei, '#F0A020');
+                            return;
+                        }
+                    }
+                },
+            });
+            Ui.candyBtn(tools, 250, 96, '🧹 清除全部', [C.greenH, C.green, C.greenD], {
+                x: 140, fontSize: 30, onClick: clearAll,
+            });
+        } else {
+            Ui.candyBtn(tools, 300, 96, '🧹 清除全部', [C.blueH, C.blue, C.blueD], {
+                x: 0, fontSize: 30, onClick: clearAll,
+            });
+        }
+        Ui.label(tools, '点两座岛搭桥：再点一次加成双桥，第三次拆除', { size: 19, color: C.inkSoft, y: -76 });
+
+        function winGame() {
+            if (st.finished) return;
+            // st.finished 必须由 finish() 置位；若这里先 true，finish 会直接 return 导致无法结算
+            const best = SAVE.data.best || (SAVE.data.best = {});
+            if (!best[cfg.id] || st.sec < best[cfg.id]) best[cfg.id] = st.sec;
+            finish(calcStars(), cfg!.rewardCoins);
+        }
     }
 
     /* ================= 暂停 ================= */
