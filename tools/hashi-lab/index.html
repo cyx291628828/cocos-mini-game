@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>搭桥实验室 · 难度参数调试</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Microsoft YaHei", sans-serif; background: #F6EEDC; color: #4A3B28; display: flex; min-height: 100vh; }
+  #panel { width: 330px; padding: 16px; background: #FFF8E8; border-right: 2px solid #D8C49E; overflow-y: auto; }
+  #stage { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 14px; }
+  h1 { font-size: 20px; margin: 0 0 10px; color: #8A5A2B; }
+  .group { margin-bottom: 12px; padding: 10px; border: 1px solid #E0D0A8; border-radius: 10px; background: #FFFDF5; }
+  .group b { font-size: 13px; color: #8A5A2B; }
+  label { display: block; font-size: 13px; margin: 6px 0 2px; }
+  .val { float: right; color: #2F7FC0; font-weight: bold; }
+  input[type=range] { width: 100%; }
+  input[type=number] { width: 90px; padding: 3px 6px; border: 1px solid #D8C49E; border-radius: 6px; }
+  button { padding: 8px 14px; margin: 4px 4px 0 0; border: 0; border-radius: 8px; background: #4FA838; color: #fff; font-size: 14px; cursor: pointer; }
+  button.sec { background: #3D95D8; }
+  button.warn { background: #E04E4E; }
+  button:active { opacity: .8; }
+  #stats { font-size: 13px; line-height: 1.7; margin-top: 8px; }
+  #stats b { color: #2F7FC0; }
+  canvas { background: #FBF3DF; border: 4px solid #8A5A2B; border-radius: 10px; touch-action: none; }
+  #msg { margin-top: 8px; font-size: 15px; font-weight: bold; min-height: 22px; }
+  .hint { font-size: 12px; color: #9A8A6A; margin-top: 6px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>🌉 搭桥实验室</h1>
+  <div class="group">
+    <b>基础配置</b>
+    <label>格子数（棋盘 N×N）<span class="val" id="v-board">9</span></label>
+    <input type="range" id="board" min="5" max="13" value="9">
+    <label>数字个数（岛数，精确）<span class="val" id="v-islands">12</span></label>
+    <input type="range" id="islands" min="5" max="24" value="12">
+    <label>种子（可复现，0=随机）</label>
+    <input type="number" id="seed" value="0">
+  </div>
+  <div class="group">
+    <b>难度 · 推理深度</b>
+    <label>探索深度：试错步数下限（假设-矛盾）<span class="val" id="v-trials">0</span></label>
+    <input type="range" id="trials" min="0" max="10" value="0">
+    <label>多步推理：级联波数下限<span class="val" id="v-waves">0</span></label>
+    <input type="range" id="waves" min="0" max="10" value="0">
+    <div class="hint">试错 &gt; 0 = 必须用「假设某边不搭 → 导出矛盾」才能解（最烧脑）；波数 = 强制推理的级联轮数（越大越需要沉住气连推）。</div>
+  </div>
+  <div class="group">
+    <b>难度 · 一眼可读</b>
+    <label>开局一眼能读出的数字个数 下限<span class="val" id="v-fgmin">0</span></label>
+    <input type="range" id="fgmin" min="0" max="16" value="0">
+    <label>上限<span class="val" id="v-fgmax">16</span></label>
+    <input type="range" id="fgmax" min="0" max="16" value="16">
+    <div class="hint">「一眼可读」= 数字等于可搭容量（全双桥）或岛只有一个邻居。调低下限/上限可逼出需要推理的题面。</div>
+  </div>
+  <div class="group">
+    <b>操作</b>
+    <button id="gen">🎲 生成题目</button>
+    <button id="answer" class="sec">👁 显示答案</button>
+    <button id="check" class="sec">🔍 检测</button>
+    <button id="clear" class="warn">🧹 清空</button>
+    <div id="stats">尚未生成</div>
+  </div>
+  <div class="hint">
+    玩法：点两座岛搭桥（再点加双桥，第三次拆除）；点两岛之间的格线也可搭桥。<br>
+    胜利 = 每岛桥数与数字一致且全岛连通。题目保证唯一解。<br>
+    本页与游戏共用同一份生成代码（assets/scripts/core/HashiGen.ts 编译产物），改游戏代码后运行 build.sh 重新构建。
+  </div>
+</div>
+<div id="stage">
+  <canvas id="cv" width="640" height="640"></canvas>
+  <div id="msg"></div>
+</div>
+<script src="HashiGen.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

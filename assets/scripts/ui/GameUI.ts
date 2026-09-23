@@ -1777,8 +1777,8 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             ? ctx!.ci! * 100 + ctx!.li! + 77
             : (ctx!.challengeKey === 'weekly' ? 71 : ctx!.challengeKey === 'monthly' ? 131 : 7);
         const band: 1 | 2 | 3 = cfg.difficulty === '简单' ? 1 : cfg.difficulty === '普通' ? 2 : 3;   // 难度 = 解题推理深度
-        let puzzle = genHashiPuzzle(N, N, cfg.islandMin, cfg.islandMax, seed * 7919 + 29, band);
-        for (let t = 1; t <= 5 && !puzzle; t++) puzzle = genHashiPuzzle(N, N, cfg.islandMin, cfg.islandMax, seed + t * 977, band);
+        let puzzle = genHashiPuzzle(N, N, cfg.islandMin, cfg.islandMax, seed * 7919 + 29, { band });
+        for (let t = 1; t <= 12 && !puzzle; t++) puzzle = genHashiPuzzle(N, N, cfg.islandMin, cfg.islandMax, seed + t * 977, { band });
         if (!puzzle) {
             Modal.open(box => {
                 const p = Ui.panel(box, 560, 420);
