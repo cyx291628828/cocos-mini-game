@@ -1,4 +1,4 @@
-import { Node, Vec3, tween, Graphics, UIOpacity, Label, Color, UITransform } from 'cc';
+import { Node, Vec3, tween, Tween, Graphics, UIOpacity, Label, Color, UITransform } from 'cc';
 import { Ui } from '../core/Ui';
 import { C, hex } from '../core/Const';
 import { Router } from '../core/Router';
@@ -11,7 +11,7 @@ import { Config, SudokuCfg, MineCfg, StarCfg, ShikakuCfg, KillerCfg, HashiCfg } 
 import { genStarPuzzle } from '../core/StarGen';
 import { genShikakuPuzzle } from '../core/ShikakuGen';
 import { genKillerPuzzle, validateKillerBoard } from '../core/KillerGen';
-import { genHashiPuzzle, hashiEdges } from '../core/HashiGen';
+import { genHashiPuzzle, hashiEdges, hashiWin } from '../core/HashiGen';
 import { Modal } from './ModalUI';
 import { confetti } from './Confetti';
 import { checkAchievements } from './Achievement';
@@ -1799,48 +1799,24 @@ export function buildGame(root: Node, ctx?: GameCtx) {
 
         buildTopCard(topY);
 
-        su.lives = cfg.lives;
-        su.errors = 0;
-
-        /* 统计卡 4 张（右→左：最佳时间 / 难度 / 剩余桥数 / 血量） */
-        const cw = (W - 108) / 4;
-        const cardX = (pos: number) => (pos - 1.5) * (cw + 12);
-        const cardBest = Ui.panel(root, cw, 104, { x: cardX(3), y: statsY, r: 18 });
-        Ui.label(cardBest, '最佳时间', { size: 19, color: C.inkSoft, y: 28 });
+        /* 统计卡 3 张（右→左：最佳时间 / 难度 / 剩余桥数） */
+        const cw = (W - 108) / 3;
+        const cardX = (pos: number) => (pos - 1) * (cw + 12);
+        const cardBest = Ui.panel(root, cw, 104, { x: cardX(2), y: statsY, r: 18 });
+        Ui.label(cardBest, '最佳时间', { size: 20, color: C.inkSoft, y: 28 });
         const bestSec = (SAVE.data.best || {})[cfg.id];
-        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 26, color: '#C89B3C', y: -16 });
-        const cardDiff = Ui.panel(root, cw, 104, { x: cardX(2), y: statsY, r: 18 });
-        Ui.label(cardDiff, '搭桥', { size: 19, color: C.inkSoft, y: 28 });
-        Ui.label(cardDiff, cfg.difficulty, { size: 26, color: C.ink, y: -16 });
-        const cardLeft = Ui.panel(root, cw, 104, { x: cardX(1), y: statsY, r: 18 });
-        Ui.label(cardLeft, '剩余桥数', { size: 19, color: C.inkSoft, y: 28 });
-        const leftLb = Ui.label(cardLeft, '0', { size: 26, color: C.ink, y: -16 });
-        const cardLife = Ui.panel(root, cw, 104, { x: cardX(0), y: statsY, r: 18 });
-        Ui.label(cardLife, '血量', { size: 19, color: C.inkSoft, y: 28 });
-        const heartN = Math.min(5, Math.max(1, cfg.lives));
-        const heartNodes: Node[] = [];
-        {
-            const innerW = cw - 18;
-            const hSize = Math.min(30, Math.floor(innerW / heartN * 0.62), heartN >= 5 ? 22 : 28);
-            const gap = heartN > 1
-                ? (heartN >= 5
-                    ? Math.min(24, (innerW - hSize) / (heartN - 1))
-                    : Math.min(36, (innerW - hSize) / (heartN - 1)))
-                : 0;
-            for (let i = 0; i < heartN; i++) {
-                heartNodes.push(Ui.emoji(cardLife, '❤️', hSize, (i - (heartN - 1) / 2) * gap, -18));
-            }
-        }
-        const updateHearts = () => heartNodes.forEach((n, i) => {
-            const op = n.getComponent(UIOpacity) || n.addComponent(UIOpacity);
-            op.opacity = i < su.lives ? 255 : 55;
-        });
-        updateHearts();
+        Ui.label(cardBest, bestSec ? fmtTime(bestSec) : '--:--', { size: 30, color: '#C89B3C', y: -16 });
+        const cardDiff = Ui.panel(root, cw, 104, { x: cardX(1), y: statsY, r: 18 });
+        Ui.label(cardDiff, '搭桥', { size: 20, color: C.inkSoft, y: 28 });
+        Ui.label(cardDiff, cfg.difficulty, { size: 28, color: C.ink, y: -16 });
+        const cardLeft = Ui.panel(root, cw, 104, { x: cardX(0), y: statsY, r: 18 });
+        Ui.label(cardLeft, '剩余桥数', { size: 20, color: C.inkSoft, y: 28 });
+        const leftLb = Ui.label(cardLeft, '0', { size: 30, color: C.ink, y: -16 });
 
+        // 星级只看超时阶梯（搭桥无失败路径，错桥由「检测」按钮提示）
         const calcStars = (): number => {
             const timeoutDed = cfg!.timeCostStar.filter(t => st.sec >= t).length;
-            const errorDed = cfg!.errorCostStar.filter(e => su.errors >= e).length;
-            return Math.max(0, 3 - timeoutDed - errorDed);
+            return Math.max(0, 3 - timeoutDed);
         };
 
         /* 棋盘骨架 */
@@ -1871,16 +1847,15 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         edges.forEach((e, i) => edgeIdx.set(e.a + '-' + e.b, i));
         const solMult = new Array(edges.length).fill(0);
         for (const b of puzzle.bridges) solMult[edgeIdx.get(b.a + '-' + b.b)!] = b.n;
-        const cur = new Array(edges.length).fill(0);        // 玩家当前桥数（恒 ≤ 解）
-        const totalSol = solMult.reduce((s, x) => s + x, 0);
-        const placedCount = () => cur.reduce((s, x) => s + x, 0);
+        const cur = new Array(edges.length).fill(0);        // 玩家当前桥数（可自由搭错，检测按钮自查）
         const islandAt = new Map<number, number>();
         islands.forEach((cell, id) => islandAt.set(cell, id));
+        // 岛放在格线交点上（非格子中心），桥沿格线走
         const center = (id: number) => {
             const r = (islands[id] / N) | 0, c = islands[id] % N;
-            return { x: -half + cs / 2 + c * cs, y: half - cs / 2 - r * cs };
+            return { x: -half + c * cs, y: half - r * cs };
         };
-        const rIsl = cs * 0.3;
+        const rIsl = cs * 0.475;   // 岛圆直径 = 0.95 格宽
 
         /* 桥层 / 闪烁层（在岛下面） */
         const bridgeG = Ui.gnode(board, boardSize, boardSize);
@@ -1926,7 +1901,7 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             const { x, y } = center(id);
             const holder = Ui.node(board, cs, cs, x, y);
             const g = Ui.gnode(holder, cs, cs);
-            const lb = Ui.label(holder, String(nums[id]), { size: cs * 0.34, color: sk.given, bold: true });
+            const lb = Ui.label(holder, String(nums[id]), { size: cs * 0.46, color: sk.given, bold: true });
             islandNodes.push({ g: g.g, lb });
         });
         let selId = -1;
@@ -1944,12 +1919,17 @@ export function buildGame(root: Node, ctx?: GameCtx) {
         };
         const redrawAllIslands = () => { for (let id = 0; id < nIsland; id++) redrawIsland(id); };
 
-        const updateLeft = () => { leftLb.string = String(totalSol - placedCount()); };
+        const updateLeft = () => {
+            let left = 0;
+            for (let ei = 0; ei < edges.length; ei++) left += Math.max(0, solMult[ei] - cur[ei]);
+            leftLb.string = String(left);
+        };
 
         const flashEdge = (ei: number, color: string) => {
             flashG.g.clear();
             strokeBridge(flashG.g, ei, 0, color, 6);
             flashG.g.stroke();
+            Tween.stopAllByTarget(flashOp);
             flashOp.opacity = 255;
             tween(flashOp)
                 .to(0.55, { opacity: 0 })
@@ -1957,73 +1937,140 @@ export function buildGame(root: Node, ctx?: GameCtx) {
                 .start();
         };
 
-        const cellAt = (loc: { x: number; y: number; z?: number }): number => {
+        /* 触点 → 命中的岛（岛在格线交点上，取最近交点且距离够近才算命中） */
+        const islandAtLoc = (loc: { x: number; y: number; z?: number }): number => {
             const local = uiToLocal(board, loc);
-            const c = Math.floor((local.x + boardSize / 2) / cs);
-            const r = Math.floor((boardSize / 2 - local.y) / cs);
-            if (!(r >= 0 && r < N && c >= 0 && c < N)) return -1;
-            return r * N + c;
+            const c = Math.round((local.x + half) / cs);
+            const r = Math.round((half - local.y) / cs);
+            if (!(c >= 0 && c < N && r >= 0 && r < N)) return -1;
+            const d = Math.hypot(local.x - (-half + c * cs), local.y - (half - r * cs));
+            if (d > cs * 0.45) return -1;
+            return islandAt.get(r * N + c) ?? -1;
+        };
+
+        /* 一条格线上，点击点两侧最近的岛构成的边（任一侧无岛则不可搭） */
+        const lineEdgeAt = (vertical: boolean, k: number, local: { x: number; y: number }): number => {
+            let lo = -1, loAlong = -1e9, hi = -1, hiAlong = 1e9;
+            for (let id = 0; id < nIsland; id++) {
+                const r = (islands[id] / N) | 0, c = islands[id] % N;
+                if ((vertical ? c : r) !== k) continue;
+                const along = vertical ? (half - r * cs) : (-half + c * cs);
+                const ref = vertical ? local.y : local.x;
+                if (along <= ref && along > loAlong) { loAlong = along; lo = id; }
+                if (along > ref && along < hiAlong) { hiAlong = along; hi = id; }
+            }
+            if (lo < 0 || hi < 0) return -1;
+            return edgeIdx.get(Math.min(lo, hi) + '-' + Math.max(lo, hi)) ?? -1;
+        };
+
+        /* 空白处点按：就近两条格线，最近线可搭（两端有岛）则搭，否则试次近线 */
+        const tryNearbyLine = (loc: { x: number; y: number; z?: number }) => {
+            const local = uiToLocal(board, loc);
+            const kv = Math.max(0, Math.min(N, Math.round((local.x + half) / cs)));
+            const kh = Math.max(0, Math.min(N, Math.round((half - local.y) / cs)));
+            const dv = Math.abs(local.x - (-half + kv * cs));
+            const dh = Math.abs(local.y - (half - kh * cs));
+            const firstV = dv <= dh;
+            const e1 = lineEdgeAt(firstV, firstV ? kv : kh, local);
+            if (e1 >= 0) { tryEdge(e1); return; }
+            const e2 = lineEdgeAt(!firstV, !firstV ? kv : kh, local);
+            if (e2 >= 0) { tryEdge(e2); return; }
+        };
+
+        /* 某方向上最近的可见岛 */
+        const neighborIn = (id: number, dir: 'l' | 'r' | 'u' | 'd'): number => {
+            const r = (islands[id] / N) | 0, c = islands[id] % N;
+            let best = -1;
+            for (let j = 0; j < nIsland; j++) {
+                if (j === id) continue;
+                const rj = (islands[j] / N) | 0, cj = islands[j] % N;
+                let ok = false, closer = false;
+                if (dir === 'r') { ok = rj === r && cj > c; closer = best < 0 || cj < islands[best] % N; }
+                else if (dir === 'l') { ok = rj === r && cj < c; closer = best < 0 || cj > islands[best] % N; }
+                else if (dir === 'u') { ok = cj === c && rj < r; closer = best < 0 || rj > ((islands[best] / N) | 0); }
+                else { ok = cj === c && rj > r; closer = best < 0 || rj < ((islands[best] / N) | 0); }
+                if (ok && closer) best = j;
+            }
+            return best;
         };
 
         const checkWin = () => {
             if (st.finished) return;
-            if (placedCount() >= totalSol) {
+            // 胜利 = 每岛桥数与数字一致且全岛连通（错桥会使度数对不上，无惩罚但无法通关）
+            if (hashiWin(nIsland, edges, nums, cur)) {
                 st.paused = true;
                 console.log('[Hashi] 全桥搭成 ✓ 星 =', calcStars());
                 winGame();
             }
         };
 
+        // 搭桥无惩罚：错桥保留不自动删，可用「检测」按钮自查
         const tryEdge = (ei: number) => {
             if (st.finished) return;
-            const next = (cur[ei] + 1) % 3;
-            if (next > solMult[ei]) {
-                // 搭错桥：与唯一解不符 → 红闪 + 计错误 + 扣 ❤️，桥数不变
-                su.errors++;
-                su.lives--;
-                updateHearts();
-                flashEdge(ei, '#E0483C');
-                if (su.lives <= 0) {
-                    failGame('❤️ 耗尽', su.errors);
-                    return;
-                }
-            } else {
-                cur[ei] = next;
-                redrawBridges();
-                updateLeft();
-                checkWin();
-            }
+            cur[ei] = (cur[ei] + 1) % 3;
+            redrawBridges();
+            updateLeft();
+            checkWin();
         };
 
-        /* 点击：board 统一坐标（不依赖 cell 触摸冒泡）；点岛选中 → 点同线岛搭桥 */
+        /* 三种操作（board 统一坐标）：
+           ① 点岛选中 → 点同线岛搭桥；② 按住岛滑动（±30°内）→ 朝甩出方向最近岛搭桥；
+           ③ 空白处点按 → 就近两条格线，先试最近线再试次近线 */
+        let pressIsland = -1;
+        let pressX = 0, pressY = 0;
+        board.on(Node.EventType.TOUCH_START, (e: any) => {
+            const loc = e.getUILocation();
+            pressX = loc.x; pressY = loc.y;
+            pressIsland = islandAtLoc(loc);
+        });
         board.on(Node.EventType.TOUCH_END, (e: any) => {
-            if (st.finished || st.paused) return;
-            const cell = cellAt(e.getUILocation());
-            const id = cell >= 0 ? (islandAt.get(cell) ?? -1) : -1;
-            if (id < 0) return;
-            if (selId < 0) {
-                selId = id;
-                redrawAllIslands();
+            if (st.finished || st.paused) { pressIsland = -1; return; }
+            const loc = e.getUILocation();
+            const local = uiToLocal(board, loc);
+            const startLocal = uiToLocal(board, { x: pressX, y: pressY });
+            const dist = Math.hypot(local.x - startLocal.x, local.y - startLocal.y);
+            // 按住岛滑动
+            if (pressIsland >= 0 && dist >= cs * 0.45) {
+                const dx = local.x - startLocal.x, dy = local.y - startLocal.y;
+                let dir: 'l' | 'r' | 'u' | 'd' | null = null;
+                if (Math.abs(dx) >= Math.abs(dy) && Math.abs(dy) <= Math.abs(dx) * 0.577) dir = dx > 0 ? 'r' : 'l';
+                else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dx) <= Math.abs(dy) * 0.577) dir = dy > 0 ? 'u' : 'd';
+                if (dir) {
+                    const to = neighborIn(pressIsland, dir);
+                    if (to >= 0) {
+                        const ei = edgeIdx.get(Math.min(pressIsland, to) + '-' + Math.max(pressIsland, to));
+                        if (ei != null) { selId = -1; redrawAllIslands(); tryEdge(ei); }
+                    }
+                }
+                pressIsland = -1;
                 return;
             }
-            if (selId === id) {
+            pressIsland = -1;
+            // 点按岛
+            const id = islandAtLoc(loc);
+            if (id >= 0) {
+                if (selId < 0 || selId === id) {
+                    selId = selId === id ? -1 : id;
+                    redrawAllIslands();
+                    return;
+                }
+                const key = Math.min(selId, id) + '-' + Math.max(selId, id);
+                const ei = edgeIdx.get(key);
                 selId = -1;
                 redrawAllIslands();
+                if (ei != null) tryEdge(ei);
                 return;
             }
-            const key = Math.min(selId, id) + '-' + Math.max(selId, id);
-            const ei = edgeIdx.get(key);
-            selId = -1;
-            redrawAllIslands();
-            if (ei == null) return;   // 不同线 → 无操作
-            tryEdge(ei);
+            // 空白处点按
+            tryNearbyLine(loc);
         });
+        board.on(Node.EventType.TOUCH_CANCEL, () => { pressIsland = -1; });
 
         redrawBridges();
         redrawAllIslands();
         updateLeft();
 
-        /* 工具行：💡提示（keyHint） + 🧹清除全部 */
+        /* 工具行：💡提示（keyHint） + 检测 + 🧹清除全部 */
         const tools = Ui.node(root, W, 96, 0, toolsY);
         const clearAll = () => {
             if (st.finished) return;
@@ -2033,29 +2080,39 @@ export function buildGame(root: Node, ctx?: GameCtx) {
             redrawAllIslands();
             updateLeft();
         };
+        const toastLb = Ui.label(root, '', { size: 28, x: 0, y: toolsY + 118 });
+        const toastOp = toastLb.node.getComponent(UIOpacity) || toastLb.node.addComponent(UIOpacity);
+        toastOp.opacity = 0;
+        const showToast = (msg: string, color: string) => {
+            toastLb.string = msg;
+            toastLb.color = hex(color);
+            Tween.stopAllByTarget(toastOp);
+            toastOp.opacity = 255;
+            tween(toastOp).delay(1.1).to(0.4, { opacity: 0 }).start();
+        };
+        const checkBridges = () => {
+            if (st.finished) return;
+            const wrong = cur.some((v, i) => v > solMult[i]);
+            showToast(wrong ? '当前有错误' : '目前为止全都对', wrong ? '#D14B3C' : '#3E8E4F');
+        };
+        const hintBtn = () => {
+            if (st.finished) return;
+            for (let ei = 0; ei < edges.length; ei++) {
+                if (cur[ei] < solMult[ei]) {
+                    flashEdge(ei, '#F0A020');   // 金色高亮一座未搭的解中桥
+                    return;
+                }
+            }
+        };
         if (cfg.keyHint) {
-            Ui.candyBtn(tools, 250, 96, '💡 提示', [C.blueH, C.blue, C.blueD], {
-                x: -140, fontSize: 30,
-                onClick: () => {
-                    if (st.finished) return;
-                    for (let ei = 0; ei < edges.length; ei++) {
-                        if (cur[ei] < solMult[ei]) {
-                            // 高亮提示：桥身闪金色 + 未搭满的端点岛闪金圈
-                            flashEdge(ei, '#F0A020');
-                            return;
-                        }
-                    }
-                },
-            });
-            Ui.candyBtn(tools, 250, 96, '🧹 清除全部', [C.greenH, C.green, C.greenD], {
-                x: 140, fontSize: 30, onClick: clearAll,
-            });
+            Ui.candyBtn(tools, 200, 96, '💡 提示', [C.blueH, C.blue, C.blueD], { x: -220, fontSize: 28, onClick: hintBtn });
+            Ui.candyBtn(tools, 200, 96, '🔍 检测', [C.pinkH, C.pink, C.pinkD], { x: 0, fontSize: 28, onClick: checkBridges });
+            Ui.candyBtn(tools, 200, 96, '🧹 清除全部', [C.greenH, C.green, C.greenD], { x: 220, fontSize: 28, onClick: clearAll });
         } else {
-            Ui.candyBtn(tools, 300, 96, '🧹 清除全部', [C.blueH, C.blue, C.blueD], {
-                x: 0, fontSize: 30, onClick: clearAll,
-            });
+            Ui.candyBtn(tools, 250, 96, '🔍 检测', [C.pinkH, C.pink, C.pinkD], { x: -140, fontSize: 28, onClick: checkBridges });
+            Ui.candyBtn(tools, 250, 96, '🧹 清除全部', [C.greenH, C.green, C.greenD], { x: 140, fontSize: 28, onClick: clearAll });
         }
-        Ui.label(tools, '点两座岛搭桥：再点一次加成双桥，第三次拆除', { size: 19, color: C.inkSoft, y: -76 });
+        Ui.label(tools, '点两座岛 / 点两岛之间的格线搭桥；按住岛朝上下左右滑动快速搭桥', { size: 19, color: C.inkSoft, y: -76 });
 
         function winGame() {
             if (st.finished) return;

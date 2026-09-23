@@ -1,5 +1,5 @@
 [
-    { "id": "hashi_easy",   "board": 7,  "islandMin": 7,  "islandMax": 10, "difficulty": "简单", "timeCostStar": [300, 500, 720], "errorCostStar": [4, 8, 12], "rewardCoins": 55, "lives": 5, "keyHint": true },
-    { "id": "hashi_normal", "board": 9,  "islandMin": 11, "islandMax": 15, "difficulty": "普通", "timeCostStar": [360, 600, 900], "errorCostStar": [3, 6, 9],  "rewardCoins": 70, "lives": 3, "keyHint": true },
-    { "id": "hashi_hard",   "board": 11, "islandMin": 14, "islandMax": 18, "difficulty": "困难", "timeCostStar": [480, 720, 1080], "errorCostStar": [2, 4, 6], "rewardCoins": 90, "lives": 3, "keyHint": false }
+    { "id": "hashi_easy",   "board": 7,  "islandMin": 7,  "islandMax": 10, "difficulty": "简单", "timeCostStar": [300, 500, 720],  "rewardCoins": 55, "keyHint": true },
+    { "id": "hashi_normal", "board": 9,  "islandMin": 11, "islandMax": 15, "difficulty": "普通", "timeCostStar": [360, 600, 900],  "rewardCoins": 70, "keyHint": true },
+    { "id": "hashi_hard",   "board": 11, "islandMin": 14, "islandMax": 18, "difficulty": "困难", "timeCostStar": [480, 720, 1080], "rewardCoins": 90, "keyHint": false }
 ]

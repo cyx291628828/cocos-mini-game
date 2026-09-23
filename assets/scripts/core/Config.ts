@@ -62,7 +62,7 @@ export interface KillerCfg {
 }
 
 /** 搭桥表行（assets/resources/config/hashi.json）
- *  岛上数字 = 该岛桥数；搭错桥（与唯一解不符）扣 ❤️，扣完失败。 */
+ *  岛上数字 = 该岛桥数；搭桥无失败路径，错桥可用「检测」自查，星级仅由超时阶梯决定。 */
 export interface HashiCfg {
     id: string;             // 唯一 id，如 hashi_hard
     board: number;          // 棋盘边长：board × board 格
@@ -70,9 +70,7 @@ export interface HashiCfg {
     islandMax: number;      // 岛数上限
     difficulty: string;     // 难度：简单 / 普通 / 困难
     timeCostStar: number[]; // 超时扣星阶梯（秒）
-    errorCostStar: number[];// 错误扣星阶梯（次）
     rewardCoins: number;    // 通关金币奖励
-    lives: number;          // 血量
     keyHint: boolean;       // 是否显示提示按钮
 }
 
@@ -164,8 +162,7 @@ const FALLBACK_KILLER: KillerCfg = {
 /** 搭桥配置加载失败时的兜底 */
 const FALLBACK_HASHI: HashiCfg = {
     id: 'hashi_normal', board: 9, islandMin: 11, islandMax: 15, difficulty: '普通',
-    timeCostStar: [360, 600], errorCostStar: [3, 6, 9],
-    rewardCoins: 70, lives: 3, keyHint: true,
+    timeCostStar: [360, 600], rewardCoins: 70, keyHint: true,
 };
 
 class ConfigMgr {

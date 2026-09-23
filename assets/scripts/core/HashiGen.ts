@@ -33,19 +33,26 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 /**
  * 布岛：亲和散点。首岛随机，后续岛 65% 概率沿已有岛的行/列对齐放置（距离 2-6，
  * 形成对齐链保证可见图大概率连通），35% 概率纯随机散点（保持边稀疏、少歧义）。
- * 同行/列间距一律 ≥ 2。
+ * 同行/列间距一律 ≥ 2；岛只落在内圈（行/列 1 ~ N-1），不占外围边框。
  */
 function genIslands(W: number, H: number, target: number, rng: () => number): number[] | null {
     const placed: number[] = [];
+    const inBounds = (r: number, c: number) => r >= 1 && r <= H - 2 && c >= 1 && c <= W - 2;
     const gapOk = (cell: number): boolean => {
         const r = (cell / W) | 0, c = cell % W;
+        if (!inBounds(r, c)) return false;
         for (const p of placed) {
             const pr = (p / W) | 0, pc = p % W;
             if ((pr === r && Math.abs(pc - c) < 2) || (pc === c && Math.abs(pr - r) < 2)) return false;
         }
         return true;
     };
-    placed.push((rng() * W * H) | 0);
+    // 首岛在内圈随机
+    {
+        const c = 1 + ((rng() * (W - 2)) | 0);
+        const r = 1 + ((rng() * (H - 2)) | 0);
+        placed.push(r * W + c);
+    }
     let guard = 0;
     while (placed.length < target && guard++ < target * 60) {
         let cell = -1;
@@ -58,13 +65,15 @@ function genIslands(W: number, H: number, target: number, rng: () => number): nu
             const sign = rng() < 0.5 ? -1 : 1;
             if (horizontal) {
                 const c = pc + sign * step;
-                if (c >= 0 && c < W) cell = pr * W + c;
+                if (c >= 1 && c <= W - 2) cell = pr * W + c;
             } else {
                 const r = pr + sign * step;
-                if (r >= 0 && r < H) cell = r * W + pc;
+                if (r >= 1 && r <= H - 2) cell = r * W + pc;
             }
         } else {
-            cell = (rng() * W * H) | 0;
+            const c = 1 + ((rng() * (W - 2)) | 0);
+            const r = 1 + ((rng() * (H - 2)) | 0);
+            cell = r * W + c;
         }
         if (cell >= 0 && !placed.includes(cell) && gapOk(cell)) placed.push(cell);
     }
@@ -188,6 +197,27 @@ function findFreeAssignment(n: number, cs: CrossState, rng: () => number): numbe
 }
 
 /** 解数统计（确定性搜索 + 节点预算；超预算返回 999 视为非唯一） */
+/** 胜利判定：每岛桥数 = 数字，且桥连成一整片 */
+export function hashiWin(n: number, edges: HashiEdge[], nums: number[], mult: number[]): boolean {
+    const deg = new Array(n).fill(0);
+    for (let i = 0; i < edges.length; i++) {
+        if (mult[i] <= 0) continue;
+        deg[edges[i].a] += mult[i];
+        deg[edges[i].b] += mult[i];
+    }
+    for (let v = 0; v < n; v++) if (deg[v] !== nums[v]) return false;
+    const parent = [...Array(n).keys()];
+    const find = (x: number): number => parent[x] === x ? x : (parent[x] = find(parent[x]));
+    for (let i = 0; i < edges.length; i++) {
+        if (mult[i] <= 0) continue;
+        const ra = find(edges[i].a), rb = find(edges[i].b);
+        if (ra !== rb) parent[ra] = rb;
+    }
+    const root = find(0);
+    for (let v = 1; v < n; v++) if (find(v) !== root) return false;
+    return true;
+}
+
 export function countHashiSolutions(
     W: number, H: number, islands: number[], nums: number[],
     limit = 2, nodeBudget = 80000,
