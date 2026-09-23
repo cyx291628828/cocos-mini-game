@@ -279,94 +279,154 @@ export function countHashiSolutions(
 }
 
 /**
- * 人类逻辑求解器（仅做强制推理，任意落子都在所有解中成立）：
- *  R1 需求 = 2×开边数 → 开边全部补满（到 2）
- *  R2 需求 = 开边数   → 开边全部恰好 1 座
- *  R3 需求 = 2×开边数 - 1 → 开边全部至少 1 座（恰有一条最终双桥）
- *  R4 已放桥与其它边交叉 → 该边封死；容量/需求传播
- * 走通全盘 ⇒ 题面唯一解；中途矛盾或走不动 ⇒ 不可解/待定。
+ * 分级人类逻辑求解器（只做强制推理，每步在所有解中都成立，走通全盘 ⇒ 唯一解）。
+ * 规则按推理深度分级，难度 = 解题所需的最深层级：
+ *  L1 表面规则：单岛「需求 = 容量 / 需求 = 开边数」等一眼可读的落子
+ *  L2 半深规则：need = 2k-1 → 开边全部 ≥1（R3 类）
+ *  L3 深度推理：假设某条边不再加桥并传播 L1/L2，导出矛盾 → 该边必须再搭一座
+ *  R4 交叉封边：任何层级免费应用
  */
-export function logicSolvable(n: number, edges: HashiEdge[], cross: boolean[][], nums: number[]): boolean {
+export interface HashiSolveProfile {
+    solved: boolean;        // 强制推理走通全盘（⇒ 唯一解）
+    maxLevel: number;       // 用到的最深规则层级（1/2/3）
+    initialQuiet: boolean;  // 开局无 L1/L2 强制手（每个数字都不能一眼读出桥数）
+    rounds: number;         // 推理传播轮数（强制手的级联波数 = 推理链长度）
+}
+
+interface LSState {
+    mult: number[];
+    need: number[];
+    blocked: boolean[];
+}
+
+function lsContradiction(n: number, edges: HashiEdge[], inc: number[][], st: LSState): boolean {
+    for (let v = 0; v < n; v++) {
+        if (st.need[v] < 0) return true;
+        if (st.need[v] === 0) continue;
+        let cap = 0;
+        for (const p of inc[v]) if (!st.blocked[p] && st.mult[p] < 2) cap += 2 - st.mult[p];
+        if (st.need[v] > cap || cap === 0) return true;
+    }
+    return false;
+}
+
+/** L1(+可选 L2) 传播到不动点；返回矛盾 / 是否有落子 / 是否用过 L2 */
+function lsPropagate(n: number, edges: HashiEdge[], inc: number[][], cross: boolean[][], st: LSState): { contradiction: boolean; moved: boolean; usedL2: boolean } {
+    let moved = false, usedL2 = false;
+    for (;;) {
+        for (let ei = 0; ei < edges.length; ei++) {
+            if (!st.blocked[ei] && cross[ei].some((x, j) => x && st.mult[j] > 0)) st.blocked[ei] = true;
+        }
+        if (lsContradiction(n, edges, inc, st)) return { contradiction: true, moved, usedL2 };
+        let act = false;
+        for (let v = 0; v < n; v++) {
+            if (st.need[v] === 0) continue;
+            const opens = inc[v].filter(p => !st.blocked[p] && st.mult[p] < 2);
+            if (opens.length === 0) return { contradiction: true, moved, usedL2 };
+            const cap = opens.reduce((s, p) => s + (2 - st.mult[p]), 0);
+            if (st.need[v] > cap) return { contradiction: true, moved, usedL2 };
+            const allZero = opens.every(p => st.mult[p] === 0);
+            const allOne = opens.every(p => st.mult[p] === 1);
+            const other = (p: number) => (edges[p].a === v ? edges[p].b : edges[p].a);
+            if (st.need[v] === cap) {
+                // L1：全部补满
+                for (const p of opens) { st.need[other(p)] -= 2 - st.mult[p]; st.mult[p] = 2; }
+                st.need[v] = 0;
+                act = true;
+            } else if (allOne && st.need[v] === opens.length) {
+                // L1：全部再 +1（到 2）—— k 条 {0,1} 边之和为 k ⇒ 全部 +1
+                for (const p of opens) { st.need[other(p)] -= 1; st.mult[p] = 2; }
+                st.need[v] = 0;
+                act = true;
+            } else if (allZero && st.need[v] === 2 * opens.length - 1) {
+                // L2：全部至少 1（鸽笼：任一边为 0 则最大 2k-2 < 2k-1）
+                for (const p of opens) { st.need[other(p)] -= 1; st.mult[p] = 1; }
+                st.need[v] -= opens.length;
+                usedL2 = true;
+                act = true;
+            }
+            if (act) {
+                moved = true;
+                if (lsContradiction(n, edges, inc, st)) return { contradiction: true, moved, usedL2 };
+            }
+        }
+        if (!act) return { contradiction: false, moved, usedL2 };
+    }
+}
+
+/** L3 深度推理：假设一条开边不再加桥 → 传播 L1/L2 → 矛盾则该边强制 +1 */
+function lsTrial(n: number, edges: HashiEdge[], inc: number[][], cross: boolean[][], st: LSState): boolean {
+    for (let v = 0; v < n; v++) {
+        if (st.need[v] === 0) continue;
+        for (const e of inc[v]) {
+            if (st.blocked[e] || st.mult[e] >= 2) continue;
+            const st2: LSState = { mult: st.mult.slice(), need: st.need.slice(), blocked: st.blocked.slice() };
+            st2.blocked[e] = true;   // 假设：这条边不再加桥
+            const r = lsPropagate(n, edges, inc, cross, st2);
+            if (r.contradiction) {
+                // 矛盾 ⇒ 该边必须再搭一座
+                const u = edges[e].a === v ? edges[e].b : edges[e].a;
+                st.need[v] -= 1;
+                st.need[u] -= 1;
+                st.mult[e] += 1;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+export function logicSolveProfile(n: number, edges: HashiEdge[], cross: boolean[][], nums: number[], allowTrial = true): HashiSolveProfile {
     const inc: number[][] = Array.from({ length: n }, () => []);
     edges.forEach((e, i) => { inc[e.a].push(i); inc[e.b].push(i); });
-    const mult = new Array(edges.length).fill(0);
-    const blocked = new Array(edges.length).fill(false);
-    const need = nums.slice();
-    // 岛 v 的剩余容量 = Σ(2 - mult)；isOpen = 未封死且 mult<2
-    const opensOf = (v: number) => inc[v].filter(p => !blocked[p] && mult[p] < 2);
-    const capOf = (v: number, opens: number[]) => opens.reduce((s, p) => s + (2 - mult[p]), 0);
-    let placed = true;
-    while (placed) {
-        placed = false;
-        // R4：新放的桥封死交叉边
-        for (let ei = 0; ei < edges.length; ei++) {
-            if (!blocked[ei] && cross[ei].some((x, j) => x && mult[j] > 0)) {
-                blocked[ei] = true;
-                placed = true;
-            }
+    const st: LSState = { mult: new Array(edges.length).fill(0), need: nums.slice(), blocked: new Array(edges.length).fill(false) };
+    // 开局静默检测：初始局面是否存在表面强制手（用副本跑，不影响主状态）
+    const st0: LSState = { mult: st.mult.slice(), need: st.need.slice(), blocked: st.blocked.slice() };
+    const r0 = lsPropagate(n, edges, inc, cross, st0);
+    const initialQuiet = !r0.moved && !r0.contradiction;
+    let maxLevel = 0;
+    let rounds = 0;
+    let solved = false;
+    for (;;) {
+        const r = lsPropagate(n, edges, inc, cross, st);
+        if (r.contradiction) break;
+        if (r.moved) {
+            maxLevel = Math.max(maxLevel, r.usedL2 ? 2 : 1);
+            rounds++;
+            continue;
         }
-        for (let v = 0; v < n; v++) {
-            if (need[v] === 0) continue;
-            const opens = opensOf(v);
-            const cap = capOf(v, opens);
-            if (need[v] > cap) return false;
-            if (cap === 0) return false;
-            const allZero = opens.every(p => mult[p] === 0);
-            const allOne = opens.every(p => mult[p] === 1);
-            if (need[v] === cap) {
-                // R1：全部补满
-                for (const p of opens) {
-                    const u = edges[p].a === v ? edges[p].b : edges[p].a;
-                    need[u] -= 2 - mult[p];
-                    mult[p] = 2;
-                }
-                need[v] = 0;
-                placed = true;
-            } else if (allZero && (need[v] === opens.length || need[v] === 2 * opens.length - 1)) {
-                // R2/R3：每条开边恰好/至少 1 座
-                for (const p of opens) {
-                    const u = edges[p].a === v ? edges[p].b : edges[p].a;
-                    need[u] -= 1;
-                    mult[p] = 1;
-                }
-                need[v] -= opens.length;
-                if (need[v] < 0) return false;
-                placed = true;
-            } else if (allOne && need[v] === opens.length) {
-                // R2'：全部再 +1（到 2）
-                for (const p of opens) {
-                    const u = edges[p].a === v ? edges[p].b : edges[p].a;
-                    need[u] -= 1;
-                    mult[p] = 2;
-                }
-                need[v] = 0;
-                placed = true;
-            }
-            if (need[v] < 0) return false;
+        if (lsTrial(n, edges, inc, cross, st)) {
+            maxLevel = 3;
+            rounds++;
+            continue;
         }
+        break;
     }
-    if (need.some(d => d !== 0)) return false;
-    // 连通校验
-    const parent = [...Array(n).keys()];
-    const find = (x: number): number => parent[x] === x ? x : (parent[x] = find(parent[x]));
-    for (let i = 0; i < edges.length; i++) {
-        if (mult[i] <= 0) continue;
-        const ra = find(edges[i].a), rb = find(edges[i].b);
-        if (ra !== rb) parent[ra] = rb;
+    if (st.need.every(d => d === 0)) {
+        const parent = [...Array(n).keys()];
+        const find = (x: number): number => parent[x] === x ? x : (parent[x] = find(parent[x]));
+        for (let i = 0; i < edges.length; i++) {
+            if (st.mult[i] <= 0) continue;
+            const ra = find(edges[i].a), rb = find(edges[i].b);
+            if (ra !== rb) parent[ra] = rb;
+        }
+        const root = find(0);
+        let conn = true;
+        for (let v = 1; v < n; v++) if (find(v) !== root) { conn = false; break; }
+        solved = conn;
     }
-    const root = find(0);
-    for (let v = 1; v < n; v++) if (find(v) !== root) return false;
-    return true;
+    return { solved, maxLevel, initialQuiet, rounds };
 }
 
 /**
- * 出题：固定种子；多轮「布岛 → 自由搜桥分配 → 数字=度数 → 逻辑可解验收（⇒唯一解）」。
- * 极端时返回 null（上层换种子重试）。
+ * 出题：固定种子；多轮「布岛 → 自由搜桥分配 → 数字=度数 → 分级逻辑求解器验收」。
+ * band = 难度带：1 表面规则可解 / 2 需要半深推理 / 3 需要深度试错推理（开局数字不可一眼读出）。
+ * 逻辑走通 ⇒ 唯一解；找不到匹配难度的题返回 null（上层换种子重试）。
  */
-export function genHashiPuzzle(W: number, H: number, islandMin: number, islandMax: number, seed: number): HashiPuzzle | null {
+export function genHashiPuzzle(W: number, H: number, islandMin: number, islandMax: number, seed: number, band: 1 | 2 | 3 = 1): HashiPuzzle | null {
     const rng = mulberry32(seed);
-    // 大棋盘单轮成功率低，轮数相应加码；找不到唯一解返回 null（上层换种子重试）
-    const rounds = W * H <= 81 ? 90 : 140;
+    // 小棋盘单轮命中难度带的概率低，靠轮数堆；找不到返回 null（上层换种子重试）
+    const rounds = W * H <= 49 ? 260 : W * H <= 81 ? 90 : 140;
     for (let round = 0; round < rounds; round++) {
         const target = islandMin + ((rng() * (islandMax - islandMin + 1)) | 0);
         const islands = genIslands(W, H, target, rng);
@@ -391,12 +451,17 @@ export function genHashiPuzzle(W: number, H: number, islandMin: number, islandMa
             nums[edges[i].b] += mult[i];
         }
         if (nums.some(d => d < 1 || d > 8)) continue;
-        const cnt = countHashiSolutions(W, H, islands, nums, 2);
-        const puzzle: HashiPuzzle = {
+        // 难度带验收（难度 = 解题推理深度）：逻辑走通 ⇒ 唯一解
+        //   1 简单：表面规则即可解  2 普通：需要半深推理  3 困难：必须深度试错推理
+        const profile = logicSolveProfile(islands.length, edges, cross, nums);
+        if (!profile.solved) continue;
+        if (band === 1 && profile.maxLevel !== 1) continue;
+        if (band === 2 && profile.maxLevel !== 2) continue;
+        if (band === 3 && profile.maxLevel !== 3) continue;
+        return {
             W, H, islands, nums,
             bridges: edges.map((e, i) => mult[i] > 0 ? { a: e.a, b: e.b, n: mult[i] } : null!).filter(Boolean),
         };
-        if (cnt === 1) return puzzle;
     }
     return null;
 }
